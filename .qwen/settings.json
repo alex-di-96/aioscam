@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(venv/bin/python *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(python3.12 *)",
+      "Bash(timeout *)",
+      "Bash(true)",
+      "WebFetch(raw.githubusercontent.com)",
+      "Bash(cd *)",
+      "Bash(source *)",
+      "Bash(grep *)",
+      "Bash(head *)",
+      "Bash(sleep *)",
+      "Bash(echo *)",
+      "Bash(wait)",
+      "Bash(kill *)",
+      "Bash(wc *)",
+      "Bash(git log *)"
+    ]
+  },
+  "$version": 3
+}

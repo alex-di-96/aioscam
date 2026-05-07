@@ -1,0 +1,427 @@
+"""
+Main Dispatcher
+"""
+
+import asyncio
+import inspect
+import json
+import logging
+from typing import Any, Dict, List, Optional
+
+from aioscam.bot import Bot
+from aioscam.dispatcher.router import Router
+from aioscam.dispatcher.event import EventContext
+from aioscam.dispatcher.state import StateContext
+from aioscam.types.update import Update
+from aioscam.fsm.memory import MemoryStorage
+from aioscam.fsm.storage import BaseStorage
+from aioscam.exceptions import DispatcherError
+
+logger = logging.getLogger(__name__)
+
+
+class Dispatcher(Router):
+    """
+    Main dispatcher for bot
+    
+    Dispatcher is the root router that manages event processing
+    
+    Usage:
+        dp = Dispatcher()
+        
+        @dp.message_created(Command("start"))
+        async def cmd_start(event):
+            await event.message.answer("Hello!")
+        
+        await dp.start_polling(bot)
+    """
+    
+    def __init__(self, storage: Optional[BaseStorage] = None):
+        from aioscam.config import get_config
+        
+        super().__init__("Dispatcher")
+        self.storage = storage or MemoryStorage()
+        self._running = False
+        self._polling_offset: Optional[int] = None
+        self._lock = asyncio.Lock()
+        self._webhook_secret: Optional[str] = None
+        
+        # Setup logging based on environment config
+        config = get_config()
+        config.setup_logging("aioscam")
+
+    def _extract_chat_and_user_ids(self, context):
+        """
+        Extract chat_id and user_id from EventContext.
+
+        Works for both message and callback events.
+        For callbacks, user_id comes from callback.user, not message.sender.
+        """
+        chat_id = None
+        user_id = None
+
+        # Try via chat property
+        if hasattr(context, 'chat') and context.chat:
+            chat = context.chat
+            if hasattr(chat, 'chat_id'):
+                chat_id = chat.chat_id
+            elif isinstance(chat, dict):
+                chat_id = chat.get('chat_id')
+
+        # For callback: extract user_id from callback.user FIRST (priority)
+        event = getattr(context, 'event', None)
+        if event and hasattr(event, 'callback') and event.callback:
+            cb = event.callback
+            if isinstance(cb, dict) and 'user' in cb:
+                user = cb['user']
+                if isinstance(user, dict):
+                    user_id = user.get('user_id')
+                elif hasattr(user, 'user_id'):
+                    user_id = user.user_id
+        
+        # For messages: extract from sender
+        if user_id is None and hasattr(context, 'from_user') and context.from_user:
+            user = context.from_user
+            if hasattr(user, 'user_id'):
+                user_id = user.user_id
+            elif isinstance(user, dict):
+                user_id = user.get('user_id')
+
+        return chat_id, user_id
+
+    async def process_message(self, event, data=None) -> Any:
+        """Process message event with state injection"""
+        if data is None:
+            data = {}
+
+        # Extract chat_id and user_id from event
+        chat_id, user_id = self._extract_chat_and_user_ids(event)
+
+        # Create state context and inject into both data dict and event.data
+        state_ctx = StateContext(self.storage, chat_id, user_id)
+        data['state'] = state_ctx
+
+        # Also inject into event.data if event is EventContext
+        if hasattr(event, 'data'):
+            event.data['state'] = state_ctx
+
+        # STATE GUARD: block unauthorized commands during active FSM
+        text = getattr(event, 'text', '') or ''
+        if isinstance(text, str) and text.startswith('/'):
+            command = text.split()[0].lower()
+            allowed = {'/cancel', '/start', '/commands'}
+            if command not in allowed:
+                current = await state_ctx.get_state()
+                if current:
+                    hints = {
+                        "RegistrationState:waiting_name": "ваше имя (текст)",
+                        "RegistrationState:waiting_age": "ваш возраст (число)",
+                        "RegistrationState:waiting_email": "ваш email (format@domain.com)",
+                        "QuizState:question_1": "ответ на вопрос 1 (A, B, C или D)",
+                        "QuizState:question_2": "ответ на вопрос 2 (A, B, C или D)",
+                        "QuizState:question_3": "ответ на вопрос 3 (A, B, C или D)",
+                        "FeedbackState:waiting_feedback": "ваш отзыв (текст)",
+                    }
+                    hint = hints.get(current, "ожидаемые данные")
+                    bot = getattr(event, 'bot', None)
+                    if bot and chat_id:
+                        await bot.send_message(chat_id, f"⏳ Сейчас бот ждёт: {hint}\n\nДля отмены: /cancel\nДля перезапуска: /start")
+                    return None  # Block handler
+
+        return await super().process_message(event, data)
+
+    async def process_callback(self, event, data=None) -> Any:
+        """Process callback event with state injection"""
+        if data is None:
+            data = {}
+
+        # Extract chat_id and user_id from event
+        chat_id, user_id = self._extract_chat_and_user_ids(event)
+
+        # Create state context and inject into both data dict and event.data
+        state_ctx = StateContext(self.storage, chat_id, user_id)
+        data['state'] = state_ctx
+
+        # Also inject into event.data if event is EventContext
+        if hasattr(event, 'data'):
+            event.data['state'] = state_ctx
+
+        # STATE GUARD: block callback actions during active FSM
+        # EventContext has callback_data property, not payload
+        payload = ''
+        if hasattr(event, 'callback_data'):
+            payload = event.callback_data or ''
+        elif hasattr(event, 'payload'):
+            payload = event.payload or ''
+        if not isinstance(payload, str):
+            payload = str(payload) if payload else ''
+
+        if payload.startswith('action:'):
+            allowed_callbacks = {'action:stats', 'action:help', 'action:settings', 'action:cancel'}
+            if payload not in allowed_callbacks:
+                current = await state_ctx.get_state()
+                if current:
+                    hints = {
+                        "RegistrationState:waiting_name": "ваше имя (текст)",
+                        "RegistrationState:waiting_age": "ваш возраст (число)",
+                        "RegistrationState:waiting_email": "ваш email (format@domain.com)",
+                        "QuizState:question_1": "ответ на вопрос 1 (A, B, C или D)",
+                        "QuizState:question_2": "ответ на вопрос 2 (A, B, C или D)",
+                        "QuizState:question_3": "ответ на вопрос 3 (A, B, C или D)",
+                        "FeedbackState:waiting_feedback": "ваш отзыв (текст)",
+                    }
+                    hint = hints.get(current, "ожидаемые данные")
+                    bot = getattr(event, 'bot', None)
+                    if bot and chat_id:
+                        await bot.send_message(chat_id, f"⏳ Сначала завершите текущий процесс!\n\nБот ждёт: {hint}\n\nИли нажмите /cancel для отмены")
+                    return None  # Block handler
+
+        return await super().process_callback(event, data)
+
+    async def process_event(self, event_type: str, event, data=None) -> Any:
+        """Process generic event with state injection"""
+        if data is None:
+            data = {}
+
+        # Extract chat_id and user_id from event
+        chat_id, user_id = self._extract_chat_and_user_ids(event)
+
+        # Create state context and inject into both data dict and event.data
+        state_ctx = StateContext(self.storage, chat_id, user_id)
+        data['state'] = state_ctx
+
+        # Also inject into event.data if event is EventContext
+        if hasattr(event, 'data'):
+            event.data['state'] = state_ctx
+
+        return await super().process_event(event_type, event, data)
+    
+    async def start_polling(
+        self,
+        bot: Bot,
+        skip_updates: bool = True,
+        timeout: int = 30,
+        limit: int = 100,
+    ) -> None:
+        """
+        Start polling for updates
+        
+        Args:
+            bot: Bot instance
+            skip_updates: Skip pending updates on start
+            timeout: Long polling timeout
+            limit: Updates limit per request
+        """
+        async with self._lock:
+            if self._running:
+                raise DispatcherError("Polling is already running")
+            self._running = True
+        
+        logger.info("Starting polling...")
+        
+        # Delete webhook if active
+        try:
+            subscriptions = await bot.get_subscriptions()
+            if subscriptions:
+                logger.info("Deleting active webhook subscriptions")
+                await bot.delete_webhook()
+        except Exception as e:
+            logger.warning(f"Failed to delete webhook: {e}")
+        
+        # Get initial marker if skip_updates
+        if skip_updates:
+            try:
+                marker = await bot.get_last_marker()
+                if marker:
+                    self._polling_offset = marker
+                    logger.info(f"Skipped updates, starting from marker: {marker}")
+            except Exception as e:
+                logger.warning(f"Failed to skip updates: {e}")
+        
+        retry_count = 0
+        max_retry_delay = 30
+        
+        try:
+            while self._running:
+                try:
+                    updates_response = await bot.get_updates(
+                        marker=self._polling_offset,
+                        limit=limit,
+                        timeout=timeout,
+                    )
+                    
+                    # Reset retry count on success
+                    retry_count = 0
+                    
+                    if updates_response:
+                        logger.info(f"Received {len(updates_response)} updates")
+                        
+                        for update_data in updates_response:
+                            try:
+                                # Handle string updates
+                                if isinstance(update_data, str):
+                                    import json
+                                    update_data = json.loads(update_data)
+                                
+                                logger.info(f"Raw update data: {update_data}")
+                                
+                                update = Update(**update_data)
+                                await self._process_update(bot, update)
+                            except Exception as e:
+                                logger.error(f"Error processing single update: {e}", exc_info=True)
+                                logger.error(f"Problematic update data: {update_data}")
+                                # Continue processing other updates
+                                continue
+                        
+                        # Get new marker from last update
+                        if updates_response:
+                            last_update = updates_response[-1]
+                            if isinstance(last_update, dict):
+                                # Use timestamp or seq as marker
+                                msg = last_update.get("message", {})
+                                body = msg.get("body", {})
+                                self._polling_offset = body.get("seq") or last_update.get("timestamp")
+                    
+                except Exception as e:
+                    retry_count += 1
+                    logger.error(f"Error in polling loop (retry {retry_count}): {e}")
+                    
+                    # Exponential backoff
+                    delay = min(2 ** retry_count, max_retry_delay)
+                    logger.info(f"Retrying in {delay} seconds...")
+                    await asyncio.sleep(delay)
+        
+        except KeyboardInterrupt:
+            logger.info("Polling stopped by user")
+        finally:
+            async with self._lock:
+                self._running = False
+            await self.storage.close()
+    
+    async def stop_polling(self) -> None:
+        """Stop polling"""
+        self._running = False
+
+    async def _process_update(self, bot: Bot, update: Update) -> None:
+        """
+        Process single update
+
+        Args:
+            bot: Bot instance
+            update: Update object
+        """
+        try:
+            event_type = update.event_type
+            event = update.event
+
+            if not event_type or not event:
+                logger.warning(f"Unknown update type: {update}")
+                return
+
+            # Create event context with shared data dict
+            context = EventContext(event, bot, data={
+                'raw_update': update.model_dump() if hasattr(update, 'model_dump') else {}
+            })
+
+            # Process based on type
+            if event_type == "message_created":
+                await self.process_message(context)
+            elif event_type == "message_edited":
+                await self.process_event('message_edited', context)
+            elif event_type == "message_callback":
+                # Inject state for callbacks
+                chat_id = None
+                user_id = None
+                if hasattr(context, 'chat') and context.chat:
+                    chat = context.chat
+                    if hasattr(chat, 'chat_id'):
+                        chat_id = chat.chat_id
+                    elif isinstance(chat, dict):
+                        chat_id = chat.get('chat_id')
+                if hasattr(context, 'from_user') and context.from_user:
+                    user = context.from_user
+                    if hasattr(user, 'user_id'):
+                        user_id = user.user_id
+                    elif isinstance(user, dict):
+                        user_id = user.get('user_id')
+                
+                context.data['state'] = StateContext(self.storage, chat_id, user_id)
+                await self.process_callback(context)
+            elif event_type == "message_removed":
+                await self.process_event('message_removed', context)
+            else:
+                # Try to process as a generic event
+                try:
+                    await self.process_event(event_type, context)
+                except Exception as e:
+                    logger.warning(f"No handler for event type: {event_type}")
+        
+        except Exception as e:
+            logger.error(f"Error processing update: {e}", exc_info=True)
+    
+    async def handle_webhook(
+        self,
+        bot: Bot,
+        host: str = "0.0.0.0",
+        port: int = 8080,
+        path: str = "/webhook",
+        secret_token: Optional[str] = None,
+    ) -> None:
+        """
+        Start webhook server (aiohttp)
+        
+        Args:
+            bot: Bot instance
+            host: Server host
+            port: Server port
+            path: Webhook path
+            secret_token: Secret token for webhook validation
+        """
+        from aiohttp import web
+        
+        self._webhook_secret = secret_token
+        app = web.Application()
+        
+        async def webhook_handler(request):
+            try:
+                # Validate secret token if provided
+                if self._webhook_secret:
+                    request_token = request.headers.get("X-Max-Secret-Token")
+                    if not request_token or request_token != self._webhook_secret:
+                        logger.warning("Unauthorized webhook request")
+                        return web.json_response(
+                            {"ok": False, "error": "Unauthorized"},
+                            status=401
+                        )
+                
+                data = await request.json()
+                update = Update(**data)
+                await self._process_update(bot, update)
+                return web.json_response({"ok": True})
+            except Exception as e:
+                logger.error(f"Webhook error: {e}")
+                return web.json_response({"ok": False, "error": "Internal error"}, status=500)
+        
+        app.router.add_post(path, webhook_handler)
+        
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, host, port)
+        
+        logger.info(f"Starting webhook on {host}:{port}{path}")
+        
+        shutdown_event = asyncio.Event()
+        
+        try:
+            await site.start()
+            # Wait for shutdown signal
+            await shutdown_event.wait()
+        except KeyboardInterrupt:
+            logger.info("Webhook server stopped")
+        finally:
+            await runner.cleanup()
+    
+    async def shutdown(self) -> None:
+        """Shutdown dispatcher and close resources"""
+        await self.stop_polling()
+        await self.storage.close()
