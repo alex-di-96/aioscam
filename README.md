@@ -4,7 +4,7 @@ Async Python framework for building Max messenger bots, inspired by aiogram arch
 
 ## Version
 
-**v0.1.5.1** — Production Ready (2026-05-19)
+**v0.1.6** — Production Ready (2026-05-19)
 
 ### Latest features
 - ✨ `format` parameter in `send_message()` and `edit_message()` — Markdown and HTML support

@@ -1,6 +1,6 @@
 # AioScam Roadmap
 
-## v0.1.5.1 — Current (2026-05-19)
+## v0.1.6 — Current (2026-05-19)
 
 ✅ Markdown/HTML formatting (`format` param on send_message/edit_message)
 ✅ `BotCommand` type + `set_my_commands()` — bot command menu

@@ -77,6 +77,11 @@ docs/_build/
 Thumbs.db
 
 # ========================
+# Deploy scripts (contain private server info)
+# ========================
+scripts/
+
+# ========================
 # Qwen (AI assistant)
 # ========================
 .qwen/
