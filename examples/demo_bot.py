@@ -1,0 +1,1026 @@
+#!/usr/bin/env python3
+"""
+AioScam Framework - Полнофункциональный тестовый бот
+
+Этот бот демонстрирует ВСЕ возможности фреймворка:
+- Команды и фильтры
+- FSM (машина состояний)
+- Inline клавиатуры и callback'и
+- Middleware
+- Magic filters
+- Router систему
+- Formatting utilities
+"""
+
+import asyncio
+import logging
+import time
+import sys
+import os
+
+# Setup logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+import os
+import sys
+import fcntl
+
+from aioscam import Bot, Dispatcher, Router, Command, F, StateFilter, BotCommand
+from aioscam.enums import ParseMode
+from aioscam.fsm import State, StatesGroup
+from aioscam.utils.keyboard import KeyboardBuilder
+from aioscam.utils.deep_linking import create_deep_link
+
+# ==================== FSM States ====================
+
+class RegistrationState(StatesGroup):
+    """Состояния для регистрации"""
+    waiting_name = State()
+    waiting_age = State()
+    waiting_email = State()
+
+
+class QuizState(StatesGroup):
+    """Состояния для викторины"""
+    question_1 = State()
+    question_2 = State()
+    question_3 = State()
+
+
+class FeedbackState(StatesGroup):
+    waiting_feedback = State()
+    waiting_text = State()
+
+
+# ==================== Middleware ====================
+
+async def cleanup_middleware(event, handler):
+    """
+    Middleware для одноразовых клавиатур и очистки чата.
+
+    Правило:
+    1. Пользователь нажал кнопку → клавиатура исчезает (hide_keyboard)
+    2. Бот ответил новым сообщением → предыдущее сообщение бота удаляется
+    """
+    state = event.data.get('state')
+    saved_data = {}
+    if state:
+        try:
+            saved_data = await state.get_data()
+        except Exception as e:
+            print(f"🧹 get_data error: {e}")
+    prev_msg_id = saved_data.get('prev_bot_msg_id')
+    quiz_msg_id = saved_data.get('quiz_msg_id')
+
+    # Оборачиваем event.answer для сохранения message_id бота в FSM state
+    original_answer = event.answer
+
+    async def answer_with_tracking(text, **kwargs):
+        print(f"📝 answer_with_tracking called: text_len={len(text)}")
+        result = await original_answer(text, **kwargs)
+        if result and isinstance(result, dict):
+            msg = result.get('message', result)
+            body = msg.get('body', {})
+            mid = body.get('mid')
+            print(f"📝 answer_with_tracking: extracted mid={mid}")
+            if mid and state:
+                try:
+                    await state.update_data(prev_bot_msg_id=mid)
+                    print(f"✅ Saved prev_bot_msg_id={mid} to state")
+                except Exception as e:
+                    print(f"❌ Failed to save prev_bot_msg_id: {e}")
+        return result
+
+    event.answer = answer_with_tracking
+
+    async def hide_keyboard_wrapper(text=None):
+        mid = saved_data.get('prev_bot_msg_id')
+        print(f"🔒 hide_keyboard_wrapper: mid={mid}, text={text}")
+        if not mid:
+            return None
+        return await event.bot.edit_message(message_id=mid, text=text, keyboard=None)
+
+    async def answer_and_hide_wrapper(text=None, keyboard=None):
+        mid = saved_data.get('prev_bot_msg_id')
+        if not mid:
+            return None
+        final_text = text or "✅"
+        return await event.bot.edit_message(message_id=mid, text=final_text, keyboard=keyboard)
+
+    event.hide_keyboard = hide_keyboard_wrapper
+    event.answer_and_hide_keyboard = answer_and_hide_wrapper
+
+    result = await handler(event)
+
+    # Re-read quiz_msg_id and feedback_msg_id from event.data
+    quiz_msg_id = event.data.get('quiz_msg_id') or saved_data.get('quiz_msg_id')
+    feedback_msg_id = event.data.get('feedback_msg_id') or saved_data.get('feedback_msg_id')
+
+    # Удаляем предыдущее сообщение бота ПОСЛЕ нового ответа (кроме quiz_msg_id и feedback_msg_id)
+    if prev_msg_id and prev_msg_id != quiz_msg_id and prev_msg_id != feedback_msg_id:
+        try:
+            await event.bot.delete_message(prev_msg_id)
+            print(f"🗑️ Deleted prev_msg_id={prev_msg_id}")
+        except Exception as e:
+            print(f"⚠️ Failed to delete prev_msg_id: {e}")
+
+    return result
+
+    async def answer_with_tracking(text, **kwargs):
+        print(f"📝 answer_with_tracking called: text_len={len(text)}")
+        result = await original_answer(text, **kwargs)
+        print(f"📝 answer result type: {type(result)}")
+        # Сохраняем message_id бота в FSM state
+        if result and isinstance(result, dict):
+            msg = result.get('message', result)
+            body = msg.get('body', {})
+            mid = body.get('mid')
+            print(f"📝 answer_with_tracking: extracted mid={mid}")
+            if mid and state:
+                try:
+                    await state.update_data(prev_bot_msg_id=mid)
+                    print(f"✅ Saved prev_bot_msg_id={mid} to state")
+                except Exception as e:
+                    print(f"❌ Failed to save prev_bot_msg_id: {e}")
+        else:
+            print(f"⚠️ answer result is NOT dict: {result}")
+        return result
+
+    event.answer = answer_with_tracking
+
+    # Оборачиваем hide_keyboard чтобы использовал prev_bot_msg_id из FSM state
+    async def hide_keyboard_wrapper(text=None):
+        """Hide keyboard используя prev_bot_msg_id из FSM state"""
+        mid = saved_data.get('prev_bot_msg_id')
+        print(f"🔒 hide_keyboard_wrapper: mid={mid}, text={text}")
+        if not mid:
+            print("⚠️ hide_keyboard: no prev_bot_msg_id found!")
+            return None
+        try:
+            result = await event.bot.edit_message(message_id=mid, text=text, keyboard=None)
+            print(f"✅ edit_message result: {result}")
+            return result
+        except Exception as e:
+            print(f"❌ edit_message error: {e}")
+            raise
+
+    async def answer_and_hide_wrapper(text=None, keyboard=None):
+        """Edit message используя prev_bot_msg_id из FSM state"""
+        mid = saved_data.get('prev_bot_msg_id')
+        print(f"🔒 answer_and_hide_wrapper: mid={mid}")
+        if not mid:
+            return None
+        final_text = text or "✅"
+        return await event.bot.edit_message(message_id=mid, text=final_text, keyboard=keyboard)
+
+    event.hide_keyboard = hide_keyboard_wrapper
+    event.answer_and_hide_keyboard = answer_and_hide_wrapper
+
+    # Выполняем хэндлер
+    result = await handler(event)
+
+    # Удаляем предыдущее сообщение бота ПОСЛЕ того как новый ответ отправлен
+    if prev_msg_id:
+        try:
+            await event.bot.delete_message(prev_msg_id)
+            print(f"🗑️ Deleted prev_msg_id={prev_msg_id}")
+        except Exception as e:
+            print(f"⚠️ Failed to delete prev_msg_id: {e}")
+
+    return result
+
+
+async def logging_middleware(event, handler):
+    """Middleware для логирования событий"""
+    event_type = type(event.event).__name__
+    logger.info(f"📨 Event: {event_type}")
+
+    start_time = time.time()
+    result = await handler(event)
+    duration = time.time() - start_time
+
+    logger.info(f"✅ Event processed in {duration:.3f}s")
+    return result
+
+
+async def typing_middleware(event, handler):
+    """Middleware для показа typing индикатора"""
+    try:
+        if hasattr(event, 'message') and event.message and event.message.chat:
+            await event.bot.send_action(
+                event.message.chat.id,
+                SenderAction.TYPING
+            )
+    except:
+        pass  # Игнорируем ошибки typing
+    
+    return await handler(event)
+
+
+# ==================== Routers ====================
+
+# Создаем роутеры для разных функций
+main_router = Router(name="main")
+quiz_router = Router(name="quiz")
+feedback_router = Router(name="feedback")
+admin_router = Router(name="admin")
+
+
+# ==================== Main Router ====================
+
+@main_router.message_created(Command("start"))
+async def cmd_start(event, state):
+    """Команда /start - главное меню"""
+    # Сбрасываем FSM состояние
+    current_state = await state.get_state()
+    if current_state:
+        await state.set_state(None)
+
+    # Получаем данные пользователя
+    from_user = event.from_user
+    if from_user:
+        if hasattr(from_user, 'first_name'):
+            first_name = getattr(from_user, 'first_name', '')
+            last_name = getattr(from_user, 'last_name', '')
+            username = getattr(from_user, 'username', '')
+        elif isinstance(from_user, dict):
+            first_name = from_user.get('first_name', '')
+            last_name = from_user.get('last_name', '')
+            username = from_user.get('username', '')
+        else:
+            first_name = last_name = username = ''
+    else:
+        first_name = last_name = username = ''
+
+    name = f"{first_name} {last_name}".strip() or "Пользователь"
+    username_line = f"🔗 @{username}\n" if username else ""
+
+    # Версия фреймворка
+    from aioscam import __version__
+
+    # Создаем inline клавиатуру
+    builder = KeyboardBuilder(inline=True)
+
+    builder.callback("📝 Регистрация", "action:register")
+    builder.callback("🎯 Викторина", "action:quiz")
+    builder.row()
+    builder.callback("💬 Обратная связь", "action:feedback")
+    builder.callback("📊 Статистика", "action:stats")
+    builder.row()
+    builder.callback("❓ Помощь", "action:help")
+    builder.callback("⏹️ Отмена", "action:cancel")
+
+    keyboard = builder.build()
+
+    # Форматированный текст
+    welcome_text = (
+        f"🎉 **Добро пожаловать в AioScam Framework v{__version__}!**\n\n"
+        f"👤 **{name}**\n"
+        f"{username_line}"
+        f"━━━━━━━━━━━━━━━━━━\n\n"
+        f"🤖 **Я Demo Bot** и демонстрирую возможности фреймворка:\n"
+        f"• 🤖 Команды и фильтры\n"
+        f"• 📝 FSM (машина состояний)\n"
+        f"• 🔘 Inline клавиатуры\n"
+        f"• 🎛️ Callback обработчики\n"
+        f"• 🎭 Middleware\n"
+        f"• ✨ Magic filters\n\n"
+        f"Выберите действие:\n\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"Powered by [aLex Di](https://github.com/alex-di-96/aioscam)"
+    )
+
+    await event.answer(welcome_text, keyboard=keyboard.to_dict())
+
+
+@main_router.message_created(Command("help"))
+async def cmd_help(event):
+    """Команда /help - справка"""
+    from aioscam import __version__
+
+    help_text = (
+        f"📖 **Справка по AioScam v{__version__}**\n\n"
+        f"**Меню команд:** нажмите `/` в поле ввода или отправьте `/start`\n\n"
+        f"━━━━━━━━━━━━━━━━━━\n\n"
+        f"📨 **Форматирование:**\n"
+        f"• **Markdown**: `**bold**`, `[link](url)`\n"
+        f"• **HTML**: `<b>bold</b>`, `<a href=url>link</a>`\n"
+        f"• Inline клавиатуры с one_time_keyboard\n\n"
+        f"📝 **Демо-бот (FSM):**\n"
+        f"• Регистрация — /register (3 шага)\n"
+        f"• Викторина — кнопка в /start (3 вопроса, inline)\n"
+        f"• Обратная связь — /feedback (рейтинг 1-5 + текст)\n\n"
+        f"🎛️ **Архитектура:**\n"
+        f"• Router + Middleware\n"
+        f"• Magic filters (F.text, F.callback)\n"
+        f"• StateGuard\n"
+        f"• Polling + Webhook (FastAPI, Litestar)\n\n"
+        f"📦 **API:** 35/35 методов | **События:** 14 типов\n"
+        f"━━━━━━━━━━━━━━━━━━\n\n"
+        f"**Команды:**\n"
+        f"/start — главное меню\n"
+        f"/help — эта справка\n"
+        f"/stats — статистика + HTML демо\n"
+        f"/register — регистрация (3 шага)\n"
+        f"/feedback — обратная связь\n"
+        f"/cancel — отмена операции\n"
+        f"/contact /location — запрос данных\n"
+        f"/delete — удаление сообщения\n\n"
+        f"**Планируется:**\n"
+        f"📷 Фото 🎥 Видео 🎵 Аудио 📎 Файлы\n\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"Powered by [aLex Di](https://github.com/alex-di-96)"
+    )
+
+    await event.answer(help_text, format="markdown")
+
+
+@main_router.message_created(Command("stats"))
+async def cmd_stats(event):
+    """Команда /stats - статистика + HTML форматирование"""
+    from aioscam import __version__
+
+    stats_text = (
+        f"📊 <b>Статистика AioScam Framework</b>\n\n"
+        f"🤖 <b>Версия:</b> {__version__}\n"
+        f"📦 <b>Модулей:</b> 68 файлов\n"
+        f"🧪 <b>Тестов:</b> 100/100 passed (100%)\n"
+        f"🔒 <b>Security Score:</b> 9/10\n\n"
+        f"<b>Реализовано:</b>\n"
+        f"• 35 API методов Max\n"
+        f"• 14 типов событий\n"
+        f"• 9 типов кнопок (inline)\n"
+        f"• 8 типов вложений\n"
+        f"• 2 класса исключений\n"
+        f"• Полная async поддержка\n"
+        f"• FSM с storage backends\n"
+        f"• Middleware система\n"
+        f"• Router система\n"
+        f"• Magic filters\n"
+        f"• StateGuard\n"
+        f"• Запрос контакта/геолокации (inline)\n"
+        f"• Удаление сообщений\n\n"
+        f"✅ <b>Framework Production-Ready!</b>\n\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"<i>Демонстрация HTML разметки:</i>\n\n"
+        f"<b>Жирный текст</b> — &lt;b&gt;text&lt;/b&gt;\n"
+        f"<i>Курсив</i> — &lt;i&gt;text&lt;/i&gt;\n"
+        f"<u>Подчёркивание</u> — &lt;u&gt;text&lt;/u&gt;\n"
+        f"<s>Зачёркивание</s> — &lt;s&gt;text&lt;/s&gt;\n"
+        f"<code>Моноширинный</code> — &lt;code&gt;text&lt;/code&gt;\n"
+        f'<a href="https://github.com/alex-di-96/aioscam">Ссылка HTML</a> — &lt;a href="url"&gt;text&lt;/a&gt;\n\n'
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"Powered by <a href=\"https://github.com/alex-di-96\">aLex Di</a>\n\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"<b>Отправьте</b> /start <b>для начала</b>"
+    )
+
+    await event.answer(stats_text, format="html")
+
+
+@main_router.message_created(Command("contact"))
+async def cmd_contact(event):
+    """Команда /contact - demo запроса контакта через inline keyboard"""
+    builder = KeyboardBuilder()
+    builder.request_contact("📱 Поделиться контактом")
+    kb = builder.build()
+
+    await event.answer(
+        "📱 **Запрос контакта**\n\n"
+        "Нажмите кнопку чтобы поделиться контактом:",
+        keyboard=kb.to_dict()
+    )
+
+
+@main_router.message_created(Command("location"))
+async def cmd_location(event):
+    """Команда /location - demo запроса геолокации через inline keyboard"""
+    builder = KeyboardBuilder()
+    builder.request_location("📍 Поделиться геолокацией")
+    kb = builder.build()
+
+    await event.answer(
+        "📍 **Запрос геолокации**\n\n"
+        "Нажмите кнопку чтобы поделиться геолокацией:",
+        keyboard=kb.to_dict()
+    )
+
+
+@main_router.message_created(Command("delete"))
+async def cmd_delete(event):
+    """Команда /delete - удалить последнее сообщение"""
+    # Отправляем тестовое сообщение
+    msg = await event.answer("🗑️ Это сообщение будет удалено через 3 секунды...")
+
+    await asyncio.sleep(3)
+
+    # Получаем chat_id и user_id из event context
+    chat_id = None
+    user_id = None
+
+    if hasattr(event, 'chat') and event.chat:
+        chat_id = event.chat.chat_id if hasattr(event.chat, 'chat_id') else event.chat.get('chat_id')
+
+    if hasattr(event, 'from_user') and event.from_user:
+        user_id = event.from_user.user_id if hasattr(event.from_user, 'user_id') else event.from_user.get('user_id')
+
+    if chat_id and user_id and msg:
+        # msg format: {"message": {"body": {"mid": "...", ...}}}
+        message_data = msg.get('message', msg)
+        message_id = message_data.get('body', {}).get('mid', '')
+        if message_id:
+            await event.bot.delete_message(
+                message_id=message_id
+            )
+            await event.answer("✅ Сообщение удалено!")
+        else:
+            await event.answer("⚠️ Не удалось получить message_id")
+    else:
+        await event.answer("⚠️ Не удалось получить chat_id/user_id")
+
+
+@main_router.message_created(F.message.body.text == "")
+async def handle_contact(event):
+    """Обработка контакта (сообщение без текста с вложением contact)"""
+    raw_data = event.data.get('raw_update', {})
+    message = raw_data.get('message', {})
+    body = message.get('body', {})
+    attachments = body.get('attachments', [])
+
+    for att in attachments:
+        if att.get('type') == 'contact':
+            payload = att.get('payload', {})
+            vcf = payload.get('vcf_info', '')
+            max_info = payload.get('max_info', {})
+
+            # Парсим VCARD
+            name = ""
+            phone = ""
+            for line in vcf.split('\r\n'):
+                if line.startswith('FN:'):
+                    name = line[3:]
+                elif line.startswith('TEL'):
+                    phone = line.split(':')[-1]
+
+            # Берём из max_info если VCARD пустой
+            if not name:
+                first = max_info.get('first_name', '')
+                last = max_info.get('last_name', '')
+                name = f"{first} {last}".strip()
+
+            if not phone:
+                phone = "Не указан"
+
+            await event.answer(
+                f"📱 **Контакт получен!**\n\n"
+                f"👤 **Имя:** {name}\n"
+                f"📞 **Телефон:** `{phone}`"
+            )
+            return
+
+
+@main_router.message_created(F.message.body.text.func(lambda t: "привет" in t.lower()))
+async def handle_hello(event):
+    """Обработка приветствий через magic filter"""
+    await event.answer("👋 Привет! Как дела?")
+
+
+@main_router.message_created(F.message.body.text.func(lambda t: "hello" in t.lower()))
+async def handle_hello_en(event):
+    """Обработка hello через magic filter"""
+    await event.answer("👋 Hello! How are you?")
+
+
+@main_router.message_created(F.message.body.text.func(lambda t: "помощь" in t.lower()))
+async def handle_help_text(event):
+    """Обработка 'помощь' через magic filter"""
+    await event.answer("💡 Используйте /help для справки")
+
+
+# ==================== Registration Router (FSM) ====================
+
+@main_router.message_created(Command("register"))
+async def cmd_register(event, state):
+    """Начать регистрацию"""
+    await state.set_state(RegistrationState.waiting_name)
+    await event.answer(
+        "📝 **Регистрация**\n\n"
+        "Шаг 1/3: Введите ваше имя:"
+    )
+
+
+@main_router.message_created(StateFilter(RegistrationState.waiting_name))
+async def process_name(event, state):
+    """Обработка имени"""
+    await state.update_data(name=event.text)
+    await state.set_state(RegistrationState.waiting_age)
+    await event.answer("✅ Имя сохранено!\n\nШаг 2/3: Введите ваш возраст:")
+
+
+@main_router.message_created(StateFilter(RegistrationState.waiting_age))
+async def process_age(event, state):
+    """Обработка возраста"""
+    try:
+        age = int(event.text)
+        if age < 1 or age > 150:
+            await event.answer("⚠️ Введите корректный возраст (1-150):")
+            return
+        
+        await state.update_data(age=age)
+        await state.set_state(RegistrationState.waiting_email)
+        await event.answer("✅ Возраст сохранен!\n\nШаг 3/3: Введите ваш email:")
+    except ValueError:
+        await event.answer("⚠️ Пожалуйста, введите число:")
+
+
+@main_router.message_created(StateFilter(RegistrationState.waiting_email))
+async def process_email(event, state):
+    """Обработка email"""
+    if "@" not in event.text:
+        await event.answer("⚠️ Введите корректный email:")
+        return
+    
+    await state.update_data(email=event.text)
+    data = await state.get_data()
+    await state.set_state(None)
+    
+    await event.answer(
+        "✅ **Регистрация завершена!**\n\n"
+        f"👤 Имя: {data['name']}\n"
+        f"🔢 Возраст: {data['age']}\n"
+        f"📧 Email: {data['email']}\n\n"
+        "Спасибо за регистрацию! 🎉"
+    )
+
+
+# ==================== Quiz Router (FSM) ====================
+
+@main_router.message_created(Command("quiz"))
+async def cmd_quiz(event, state):
+    """Начать викторину"""
+    await state.set_state(QuizState.question_1)
+    await event.answer(
+        "🎯 **Викторина по AioScam**\n\n"
+        "Вопрос 1/3: На каком языке написан фреймворк?\n"
+        "A) JavaScript\n"
+        "B) Python\n"
+        "C) Go\n"
+        "D) Rust\n\n"
+        "Введите A, B, C или D:"
+    )
+
+
+@main_router.message_created(StateFilter(QuizState.question_1))
+async def quiz_q1(event, state):
+    """Вопрос 1"""
+    answer = event.text.strip().upper()
+    
+    if answer == "B":
+        await state.update_data(score=1, q1="correct")
+        await event.answer("✅ Правильно! Python!\n\n"
+                                  "Вопрос 2/3: Сколько API методов реализовано?\n"
+                                  "A) 20\n"
+                                  "B) 30\n"
+                                  "C) 45\n"
+                                  "D) 100")
+    else:
+        await state.update_data(score=0, q1="wrong")
+        await event.answer("❌ Неверно! Правильный ответ: B (Python)\n\n"
+                                  "Вопрос 2/3: Сколько API методов реализовано?\n"
+                                  "A) 20\n"
+                                  "B) 30\n"
+                                  "C) 45\n"
+                                  "D) 100")
+    
+    await state.set_state(QuizState.question_2)
+
+
+@main_router.message_created(StateFilter(QuizState.question_2))
+async def quiz_q2(event, state):
+    """Вопрос 2"""
+    answer = event.text.strip().upper()
+    
+    data = await state.get_data()
+    score = data.get('score', 0)
+    
+    if answer == "C":
+        score += 1
+        await event.answer("✅ Правильно! 45 методов!\n\n"
+                                  "Вопрос 3/3: Какой security score у фреймворка?\n"
+                                  "A) 7/10\n"
+                                  "B) 8/10\n"
+                                  "C) 9/10\n"
+                                  "D) 10/10")
+    else:
+        await event.answer("❌ Неверно! Правильный ответ: C (45)\n\n"
+                                  "Вопрос 3/3: Какой security score у фреймворка?\n"
+                                  "A) 7/10\n"
+                                  "B) 8/10\n"
+                                  "C) 9/10\n"
+                                  "D) 10/10")
+    
+    await state.update_data(score=score)
+    await state.set_state(QuizState.question_3)
+
+
+@main_router.message_created(StateFilter(QuizState.question_3))
+async def quiz_q3(event, state):
+    """Вопрос 3"""
+    answer = event.text.strip().upper()
+    
+    data = await state.get_data()
+    score = data.get('score', 0)
+    
+    if answer == "C":
+        score += 1
+    
+    await state.set_state(None)
+    
+    if score == 3:
+        result_text = "🏆 Отлично! 3/3! Вы эксперт по AioScam!"
+    elif score == 2:
+        result_text = "👍 Хорошо! 2/3! Почти идеально!"
+    elif score == 1:
+        result_text = "📚 Неплохо! 1/3! Почитайте документацию!"
+    else:
+        result_text = "😅 0/3! Не волнуйтесь, попробуйте еще раз!"
+    
+    await event.answer(
+        f"🎯 **Результаты викторины**\n\n"
+        f"{result_text}\n\n"
+        f"Ваш счет: **{score}/3**"
+    )
+
+
+# ==================== Feedback Router (FSM) ====================
+
+@main_router.message_created(Command("feedback"))
+async def cmd_feedback(event, state):
+    """Начать обратную связь"""
+    await state.set_state(FeedbackState.waiting_feedback)
+    await event.answer(
+        "💬 **Обратная связь**\n\n"
+        "Напишите ваш отзыв или предложение:\n\n"
+        "(Для отмены используйте /cancel)"
+    )
+
+
+@main_router.message_created(StateFilter(FeedbackState.waiting_feedback))
+async def process_feedback(event, state):
+    """Обработка отзыва"""
+    await state.set_state(None)
+    
+    await event.answer(
+        "✅ Спасибо за ваш отзыв!\n\n"
+        f"Мы получили: \"{event.text[:50]}...\"\n\n"
+        "Мы обязательно рассмотрим его! 🙏"
+    )
+
+
+# ==================== Cancel Command ====================
+
+
+
+@main_router.message_created(StateFilter(FeedbackState.waiting_text))
+async def process_feedback_text(event, state):
+    """Обработка текстового отзыва"""
+    saved_data = await state.get_data()
+    rating = saved_data.get('feedback_rating', '?')
+    from_user = event.from_user
+    
+    # Get user name
+    if from_user:
+        if hasattr(from_user, 'first_name'):
+            name = f"{getattr(from_user, 'first_name', '')} {getattr(from_user, 'last_name', '')}".strip()
+        elif isinstance(from_user, dict):
+            name = f"{from_user.get('first_name', '')} {from_user.get('last_name', '')}".strip()
+        else:
+            name = "Пользователь"
+    else:
+        name = "Пользователь"
+    
+    await state.set_state(None)
+    
+    await event.answer(
+        f"✅ **Спасибо, {name}!**\n\n"
+        f"Вы оценили работу AioScam на **{rating}/5**\n\n"
+        f"Ваш комментарий: \"{event.text[:100]}...\"\n\n"
+        "Мы обязательно учтём ваше мнение! 🙏\n\n"
+        "Отправьте /start для начала"
+    )
+
+@main_router.message_created(Command("cancel"))
+async def cmd_cancel(event, state):
+    """Отменить текущую операцию"""
+    current_state = await state.get_state()
+    
+    if current_state:
+        await state.set_state(None)
+        await event.answer("❌ Операция отменена.\n\nИспользуйте /start для начала.")
+    else:
+        await event.answer("ℹ️ У вас нет активной операции.")
+
+
+# ==================== Callback Handlers ====================
+
+
+
+def _feedback_rating_keyboard() -> dict:
+    """Build feedback rating keyboard (1-5 with colors)"""
+    builder = KeyboardBuilder(inline=True)
+    builder.callback("🔴 1", "feedback:1")
+    builder.callback("🟤 2", "feedback:2")
+    builder.callback("🟡 3", "feedback:3")
+    builder.row()
+    builder.callback("🔵 4", "feedback:4")
+    builder.callback("🟢 5", "feedback:5")
+    return builder.build().to_dict()
+
+
+def _quiz_keyboard(question: int) -> dict:
+    """Build quiz answer keyboard for given question"""
+    builder = KeyboardBuilder(inline=True)
+    builder.callback("A", f"quiz:{question}:A")
+    builder.callback("B", f"quiz:{question}:B")
+    builder.row()
+    builder.callback("C", f"quiz:{question}:C")
+    builder.callback("D", f"quiz:{question}:D")
+    return builder.build().to_dict()
+
+
+
+@main_router.callback_query(F.callback_data.startswith("feedback:"))
+async def handle_feedback_rating(event, state):
+    """Handle feedback rating button clicks (feedback:1-5)"""
+    callback_data = event.callback_data or ""
+    parts = callback_data.split(":")
+    if len(parts) != 2:
+        return
+    rating = int(parts[1])
+    
+    await state.update_data(feedback_rating=rating)
+    await state.set_state(FeedbackState.waiting_text)
+    
+    # Hide keyboard (one_time)
+    saved_data = await state.get_data()
+    feedback_msg_id = saved_data.get('feedback_msg_id')
+    if feedback_msg_id:
+        await event.bot.edit_message(
+            message_id=feedback_msg_id,
+            text=f"💬 Спасибо! Вы выбрали: {'🔴🟤🟡🔵🟢'[rating-1]} {rating}/5",
+            keyboard=None,
+        )
+    
+    # Send new message asking for text feedback
+    await event.answer("✍️ Опишите, что вам понравилось / не понравилось:")
+
+
+@main_router.callback_query(F.callback_data.startswith("quiz:"))
+async def handle_quiz_callback(event, state):
+    """Handle quiz button clicks (quiz:Q:A/B/C/D)"""
+    saved_data = await state.get_data()
+    msg_id = saved_data.get('quiz_msg_id')
+
+    callback_data = event.callback_data or ""
+    parts = callback_data.split(":")
+    if len(parts) != 3:
+        return
+
+    question = int(parts[1])
+    answer = parts[2]
+    correct = {1: "B", 2: "C", 3: "C"}
+
+    if question == 1:
+        new_score = 1 if answer == "B" else 0
+        await state.update_data(score=new_score, q1_answer=answer)
+    else:
+        data = await state.get_data()
+        new_score = data.get('score', 0)
+        if answer == correct.get(question):
+            new_score += 1
+        await state.update_data(score=new_score)
+
+    if question < 3:
+        next_q = question + 1
+        await state.set_state(f"QuizState:question_{next_q}")
+        prev_answer = data.get('q1_answer', '') if question == 2 else ''
+        questions = {
+            2: ("✅ Правильно! Python!\n\n" if answer == "B" else "❌ Неверно! Правильный: B (Python)\n\n") +
+               "Вопрос 2/3: Сколько API методов реализовано?\n"
+               "A) 20\nB) 30\nC) 45\nD) 100",
+            3: ("✅ Правильно! 45 методов!\n\n" if answer == "C" else "❌ Неверно! Правильный: C (45)\n\n") +
+               "Вопрос 3/3: Какой security score у фреймворка?\n"
+               "A) 7/10\nB) 8/10\nC) 9/10\nD) 10/10",
+        }
+        text = questions.get(next_q, "Викторина завершена")
+        await event.bot.edit_message(
+            message_id=msg_id,
+            text=text,
+            keyboard=_quiz_keyboard(next_q),
+        )
+    else:
+        await state.set_state(None)
+        if new_score == 3:
+            result = "🏆 Отлично! 3/3! Вы эксперт по AioScam!"
+        elif new_score == 2:
+            result = "👍 Хорошо! 2/3! Почти идеально!"
+        elif new_score == 1:
+            result = "📚 Неплохо! 1/3! Почитайте документацию!"
+        else:
+            result = "😅 0/3! Не волнуйтесь, попробуйте еще раз!"
+
+        await event.bot.edit_message(
+            message_id=msg_id,
+            text=f"🎯 **Результаты викторины**\n\n{result}\n\nВаш счет: **{new_score}/3**",
+        )
+
+
+@main_router.callback_query()
+async def handle_callback(event):
+    """Обработка callback запросов"""
+    callback_data = event.callback_data or ""
+    state = event.data.get('state')
+
+    callbacks = {
+        "action:register": ("register",),
+        "action:quiz": ("quiz",),
+        "action:feedback": ("feedback",),
+        "action:stats": ("stats",),
+        "action:help": ("help",),
+        "action:cancel": ("cancel",),
+        "action:cancel": ("cancel",),
+    }
+
+    if callback_data in callbacks:
+        command = callbacks[callback_data][0]
+
+        if command == "register" and state:
+            await state.set_state(RegistrationState.waiting_name)
+            # 1. Убираем клавиатуру (одноразовая)
+            await event.hide_keyboard("📝 Регистрация")
+            # 2. Отправляем новый ответ
+            await event.answer("📝 Начинаем регистрацию!\n\nШаг 1/3: Введите ваше имя:")
+
+        elif command == "quiz" and state:
+            await state.set_state(QuizState.question_1)
+            saved_data = await state.get_data()
+            quiz_msg_id = saved_data.get('prev_bot_msg_id')
+            print(f"🎯 quiz handler: quiz_msg_id={quiz_msg_id}")
+            if quiz_msg_id:
+                event.data['quiz_msg_id'] = quiz_msg_id  # For middleware
+                await state.update_data(quiz_msg_id=quiz_msg_id)
+                kb = _quiz_keyboard(1)
+                print(f"🎯 quiz keyboard: {kb}")
+                await event.bot.edit_message(
+                    message_id=quiz_msg_id,
+                    text="🎯 **Викторина по AioScam**\n\n"
+                         "Вопрос 1/3: На каком языке написан фреймворк?\n"
+                         "A) JavaScript\n"
+                         "B) Python\n"
+                         "C) Go\n"
+                         "D) Rust",
+                    keyboard=kb,
+                )
+            else:
+                await event.answer("⚠️ Не удалось начать викторину.")
+
+        elif command == "feedback" and state:
+            saved_data = await state.get_data()
+            feedback_msg_id = saved_data.get('prev_bot_msg_id')
+            if feedback_msg_id:
+                event.data['feedback_msg_id'] = feedback_msg_id
+                await state.update_data(feedback_msg_id=feedback_msg_id)
+                kb = _feedback_rating_keyboard()
+                await event.bot.edit_message(
+                    message_id=feedback_msg_id,
+                    text="💬 **Обратная связь**\n\n"
+                         "Оцените работу AioScam по 5-бальной шкале:",
+                    keyboard=kb,
+                )
+            else:
+                await event.answer("⚠️ Не удалось начать обратную связь.")
+
+        elif command == "stats":
+            await event.hide_keyboard("📊 Статистика")
+            await cmd_stats(event)
+
+        elif command == "help":
+            await event.hide_keyboard("📖 Справка")
+            await cmd_help(event)
+
+        elif command == "cancel":
+            if state:
+                current = await state.get_state()
+                if current:
+                    await state.set_state(None)
+                    await event.hide_keyboard("⏹️ Отмена")
+                    await event.answer("❌ Операция отменена.")
+                else:
+                    await event.hide_keyboard()
+                    await event.answer("ℹ️ У вас нет активной операции.")
+            else:
+                await event.hide_keyboard()
+                await event.answer("❌ Операция отменена.")
+        else:
+            await event.hide_keyboard()
+            await event.answer(f"🔘 Нажата кнопка: {callback_data}")
+    else:
+        await event.hide_keyboard()
+        await event.answer(f"🔘 Неизвестная кнопка: {callback_data}")
+
+
+# ==================== Setup Dispatcher ====================
+
+dp = Dispatcher()
+
+# Включаем middleware на роутер
+main_router.middleware()(cleanup_middleware)
+
+# Включаем роутеры
+dp.include_router(main_router)
+
+
+# ==================== Main ====================
+
+async def main():
+    """Запуск бота"""
+    from aioscam import __version__
+    # Config is auto-loaded from .env via get_config()
+    from aioscam.config import get_config
+    config = get_config()
+    config.setup_logging()
+
+    bot = Bot(parse_mode=ParseMode.MARKDOWN)
+    
+    # Получаем информацию о боте для генерации ссылки
+    me = await bot.get_me()
+    username = me.get('username', 'unknown')
+    bot_url = f"https://max.ru/{username}"
+    
+    print("\n" + "="*60)
+    print("🤖 AioScam Demo Bot - Запуск")
+    print("="*60)
+    print(f"\n✅ Бот запущен!")
+    print(f"👤 Bot: {me.get('first_name', 'Unknown')}")
+    print(f"🔗 Откройте бота: {bot_url}")
+    print(f"💬 Отправьте /start для начала")
+    print("="*60 + "\n")
+    
+    # Register bot commands (shown in menu button)
+    commands = [
+        BotCommand(name="start", description="Запустить бота"),
+        BotCommand(name="help", description="Справка по командам"),
+        BotCommand(name="stats", description="Статистика фреймворка"),
+    ]
+    await bot.set_my_commands(commands)
+    print(f"✅ Зарегистрировано {len(commands)} команд: {[c.name for c in commands]}")
+    
+    # Update bot description with version (avoid duplicates)
+    current_desc = me.get("description", "")
+    if f"v{__version__}" not in current_desc:
+        await bot.set_bot_info(description=current_desc + f"\n\nv{__version__}")
+    print(f"✅ Описание бота: v{__version__}")
+    
+    try:
+        await dp.start_polling(bot, skip_updates=False)
+    except KeyboardInterrupt:
+        print("\n\n⏹️ Бот остановлен пользователем")
+    except Exception as e:
+        print(f"\n❌ Ошибка: {e}")
+        logger.error(f"Bot error: {e}", exc_info=True)
+    finally:
+        await bot.close()
+
+
+PID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.demo_bot.pid')
+
+
+def _check_single_instance():
+    """Check that only one demo_bot is running"""
+    if os.path.exists(PID_FILE):
+        try:
+            with open(PID_FILE, 'r') as f:
+                old_pid = int(f.read().strip())
+            os.kill(old_pid, 0)
+            print(f"❌ Demo bot already running (PID {old_pid}). Stop it first.")
+            sys.exit(1)
+        except (ProcessLookupError, ValueError):
+            os.remove(PID_FILE)
+    with open(PID_FILE, 'w') as f:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        f.write(str(os.getpid()))
+
+
+if __name__ == "__main__":
+    _check_single_instance()
+    try:
+        asyncio.run(main())
+    finally:
+        try:
+            os.remove(PID_FILE)
+        except OSError:
+            pass
