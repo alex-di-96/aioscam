@@ -271,6 +271,8 @@ async def cmd_start(event, state):
     builder.callback("💬 Обратная связь", "action:feedback")
     builder.callback("📊 Статистика", "action:stats")
     builder.row()
+    builder.callback("🔗 Пригласить друга", "action:invite")
+    builder.row()
     builder.callback("❓ Помощь", "action:help")
     builder.callback("⏹️ Отмена", "action:cancel")
 
@@ -441,6 +443,66 @@ async def cmd_delete(event):
             await event.answer("⚠️ Не удалось получить message_id")
     else:
         await event.answer("⚠️ Не удалось получить chat_id/user_id")
+
+
+# ==================== Deep Link Handlers ====================
+
+async def _handle_invite(event):
+    """Generate personal invite deep link"""
+    user_id = None
+    if hasattr(event, 'user_id') and event.user_id:
+        user_id = event.user_id
+    elif hasattr(event, 'from_user') and event.from_user:
+        from_user = event.from_user
+        if hasattr(from_user, 'user_id'):
+            user_id = from_user.user_id
+        elif isinstance(from_user, dict):
+            user_id = from_user.get('user_id')
+
+    if not user_id:
+        await event.answer("⚠️ Не удалось определить ваш ID")
+        return
+
+    bot_username = event.bot.username or "my_bot"
+    invite_link = create_deep_link(bot_username, f"ref_{user_id}")
+
+    await event.answer(
+        f"📬 **Ваша персональная ссылка:**\n\n"
+        f"`{invite_link}`\n\n"
+        f"Поделитесь ей с друзьями! Когда они перейдут по ссылке,\n"
+        f"бот узнает что их пригласили именно вы (ID: {user_id})"
+    )
+
+
+@main_router.bot_started()
+async def on_bot_started(event, state):
+    """Handle bot_started — check for deep link payload"""
+    if event.payload:
+        # Deep link: user came via https://max.ru/<bot>?start=<payload>
+        payload = event.payload
+
+        referrer_id = None
+        if payload.startswith("ref_"):
+            referrer_id = payload[4:]
+
+        if referrer_id:
+            text = (
+                f"🎉 **Добро пожаловать!**\n\n"
+                f"Вас пригласил пользователь с ID: **{referrer_id}**\n\n"
+                f"Теперь вы тоже можете пригласить друзей!\n"
+                f"Нажмите кнопку **🔗 Пригласить друга** в главном меню."
+            )
+        else:
+            text = (
+                f"🔗 **Вы перешли по специальной ссылке!**\n\n"
+                f"Код: `{payload}`\n\n"
+                f"Нажмите **🔗 Пригласить друга** чтобы создать свою ссылку."
+            )
+
+        await event.answer(text)
+    else:
+        # Regular start — just show main menu
+        await cmd_start(event, state)
 
 
 @main_router.message_created(F.message.body.text == "")
@@ -925,6 +987,10 @@ async def handle_callback(event):
             else:
                 await event.hide_keyboard()
                 await event.answer("❌ Операция отменена.")
+
+        elif command == "invite":
+            await event.hide_keyboard("🔗 Приглашение")
+            await _handle_invite(event)
         else:
             await event.hide_keyboard()
             await event.answer(f"🔘 Нажата кнопка: {callback_data}")
