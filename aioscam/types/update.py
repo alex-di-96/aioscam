@@ -55,7 +55,7 @@ class BotStarted(MaxObject):
 class Update(MaxObject):
     """
     Update from Max API
-    
+
     Real format:
     {
         "message": {...},
@@ -65,52 +65,62 @@ class Update(MaxObject):
         "update_type": "message_created"
     }
     """
-    
+
     # Real fields from API
     message: Optional[Message] = None
     callback: Optional[Dict[str, Any]] = None
     timestamp: Optional[int] = None
     user_locale: Optional[str] = None
     update_type: Optional[str] = None
-    
+
+    # bot_started fields
+    payload: Optional[str] = None
+    user_id: Optional[int] = None
+    chat_id: Optional[int] = None
+    user: Optional[User] = None
+
     # Compatibility field
     update_id: Optional[int] = None
-    
+
     def __init__(self, **data):
         # Generate update_id from timestamp if not present
         if 'update_id' not in data:
             data['update_id'] = data.get('timestamp')
         super().__init__(**data)
-    
+
     @property
     def event_type(self) -> Optional[str]:
         """Get update type"""
         return self.update_type
-    
+
     @property
     def event(self) -> Optional["Update"]:
         """Get event object (returns self for direct access)"""
-        if self.update_type in ("message_created", "message_callback"):
+        if self.update_type in ("message_created", "message_callback", "bot_started"):
             return self
         return None
-    
+
     @property
     def text(self) -> Optional[str]:
         """Get message text if present"""
         if self.message and self.message.body:
             return self.message.body.text
         return None
-    
+
     @property
     def sender(self) -> Optional[User]:
-        """Get message sender"""
+        """Get message sender or bot_started user"""
         if self.message:
             return self.message.sender
-        return None
-    
+        # bot_started: user is the one who started the bot
+        return self.user
+
     @property
     def recipient(self) -> Optional[Recipient]:
-        """Get message recipient"""
+        """Get message recipient or bot_started chat"""
         if self.message:
             return self.message.recipient
+        # bot_started: create recipient from chat_id
+        if self.chat_id:
+            return Recipient(chat_id=self.chat_id, chat_type="dialog", user_id=self.user_id)
         return None
