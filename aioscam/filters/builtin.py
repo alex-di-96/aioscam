@@ -13,18 +13,18 @@ logger = logging.getLogger(__name__)
 class Command(BaseFilter):
     """
     Filter for bot commands
-    
+
     Usage:
         @router.message_created(Command("start"))
         @router.message_created(Command(["start", "help"]))
     """
-    
+
     def __init__(self, commands: Union[str, List[str]], prefixes: str = "/"):
         if isinstance(commands, str):
             commands = [commands]
         self.commands = [cmd.lower() for cmd in commands]
         self.prefixes = prefixes
-    
+
     async def __call__(self, event) -> FilterResult:
         try:
             # Get text from different possible locations
@@ -37,25 +37,90 @@ class Command(BaseFilter):
                     text = getattr(msg.body, 'text', None)
                 elif isinstance(msg, dict):
                     text = msg.get('body', {}).get('text')
-            
+
             if not text:
                 return FilterResult(passed=False)
-            
+
             text = text.strip()
-            
+
             if not text.startswith(tuple(self.prefixes)):
                 return FilterResult(passed=False)
-            
+
             command_match = re.match(r'^[/\'](\w+)', text)
             if not command_match:
                 return FilterResult(passed=False)
-            
+
             command = command_match.group(1).lower()
-            
+
             if command in self.commands:
                 return FilterResult(passed=True, data={"command": command})
-            
+
             return FilterResult(passed=False)
+        except Exception:
+            return FilterResult(passed=False)
+
+
+class StartCommand(BaseFilter):
+    """
+    Filter for deep link start parameter (?start=payload)
+
+    Usage:
+        @router.bot_started(StartCommand())              # any deep link
+        @router.bot_started(StartCommand("ref_12345"))   # specific payload
+        @router.bot_started(StartCommand(startswith="ref_"))  # prefix match
+    """
+
+    def __init__(
+        self,
+        equals: Optional[str] = None,
+        startswith: Optional[str] = None,
+        contains: Optional[str] = None,
+        regex: Optional[str] = None,
+    ):
+        self.equals = equals
+        self.startswith = startswith
+        self.contains = contains
+        self.regex = regex
+
+    async def __call__(self, event) -> FilterResult:
+        try:
+            # Get payload from Update.payload (deep link ?start= parameter)
+            payload = None
+
+            if hasattr(event, 'payload'):
+                payload = event.payload
+            elif hasattr(event, 'data') and isinstance(event.data, dict):
+                payload = event.data.get('payload')
+
+            if not payload:
+                return FilterResult(passed=False)
+
+            # If equals specified, exact match
+            if self.equals is not None:
+                if payload == self.equals:
+                    return FilterResult(passed=True, data={"start_payload": payload})
+                return FilterResult(passed=False)
+
+            # If startswith specified, prefix match
+            if self.startswith is not None:
+                if payload.startswith(self.startswith):
+                    return FilterResult(passed=True, data={"start_payload": payload})
+                return FilterResult(passed=False)
+
+            # If contains specified, substring match
+            if self.contains is not None:
+                if self.contains in payload:
+                    return FilterResult(passed=True, data={"start_payload": payload})
+                return FilterResult(passed=False)
+
+            # If regex specified
+            if self.regex is not None:
+                if re.search(self.regex, payload):
+                    return FilterResult(passed=True, data={"start_payload": payload})
+                return FilterResult(passed=False)
+
+            # No criteria specified — any payload passes
+            return FilterResult(passed=True, data={"start_payload": payload})
         except Exception:
             return FilterResult(passed=False)
 

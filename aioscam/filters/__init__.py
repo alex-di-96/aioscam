@@ -5,6 +5,7 @@ Filters module
 from aioscam.filters.base import BaseFilter, FilterResult
 from aioscam.filters.builtin import (
     Command,
+    StartCommand,
     Text,
     ContentType,
     ChatType,
@@ -18,6 +19,7 @@ __all__ = [
     "BaseFilter",
     "FilterResult",
     "Command",
+    "StartCommand",
     "Text",
     "ContentType",
     "ChatType",
