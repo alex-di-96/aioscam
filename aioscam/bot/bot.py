@@ -500,6 +500,7 @@ class Bot:
         notification: Optional[str] = None,
         message_id: Optional[str] = None,
         format: Optional[str] = None,
+        keyboard: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
         Send callback answer
@@ -515,37 +516,43 @@ class Bot:
             notification: Notification popup text (optional)
             message_id: Message ID to edit (optional)
             format: Text format — "markdown" or "html" (optional)
+            keyboard: InlineKeyboard or dict (optional)
 
         Returns:
             Callback response data
         """
         # Use botapi.max.ru for callback endpoint (matches official Python SDK)
         callback_url = "https://botapi.max.ru/answers"
-        
+
         import aiohttp
-        
+
         session = await self._client._get_session()
-        
+
         # Python SDK uses access_token in query params
         params = {
             "callback_id": callback_id,
             "access_token": self.token,
         }
-        
+
         # Build NewMessageBody structure (matches OpenAPI schema)
         body: Dict[str, Any] = {}
-        
+
         if message is not None:
             msg_body: Dict[str, Any] = {"text": message}
             if format:
                 msg_body["format"] = format
             elif self.parse_mode:
                 msg_body["format"] = self.parse_mode.value
+            if keyboard is not None:
+                if hasattr(keyboard, 'to_dict'):
+                    msg_body["keyboard"] = keyboard.to_dict()
+                elif isinstance(keyboard, dict):
+                    msg_body["keyboard"] = keyboard
             body["message"] = msg_body
-        
+
         if notification is not None:
             body["notification"] = notification
-        
+
         async with session.post(
             url=callback_url,
             params=params,
@@ -554,11 +561,11 @@ class Bot:
             timeout=aiohttp.ClientTimeout(total=self._client.default_timeout),
         ) as resp:
             response_text = await resp.text()
-            
+
             if resp.status != 200:
                 from aioscam.exceptions import ApiError
                 raise ApiError(f"HTTP {resp.status}: {response_text}")
-            
+
             try:
                 return await resp.json()
             except:

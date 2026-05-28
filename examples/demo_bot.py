@@ -483,9 +483,9 @@ async def cmd_start(event, state):
     # EN: Invite friend — generate deep link for referral program
     builder.callback("🔗 Пригласить друга", "action:invite")
     builder.row()
-    # ⚙️ Настройки — выбор языка (ru/en) для текущего сеанса
+    # ⚙️ Параметры — выбор языка (ru/en) для текущего сеанса
     # EN: Settings — language selection (ru/en) for current session
-    builder.callback("⚙️ Настройки", "action:settings")
+    builder.callback("⚙️ Параметры", "action:settings")
     # ❓ Помощь — справка по командам и возможностям фреймворка
     # EN: Help — help on commands and framework capabilities
     builder.callback("❓ Помощь", "action:help")
@@ -822,11 +822,20 @@ async def handle_contact(event):
 
             if not phone:
                 phone = "Не указан"
+            else:
+                # Mask phone: show only last 4 digits
+                if len(phone) > 4:
+                    phone_display = f"...{phone[-4:]}"
+                else:
+                    phone_display = phone
 
             await event.answer(
                 f"📱 **Контакт получен!**\n\n"
                 f"👤 **Имя:** {name}\n"
-                f"📞 **Телефон:** `{phone}`"
+                f"📞 **Телефон:** `{phone_display}`\n\n"
+                f"⚠️ **Мы не храним и не собираем ваши персональные данные!**\n"
+                f"Это лишь демонстрация работы фреймворка.\n\n"
+                "Отправьте /start для возврата в главное меню."
             )
             return
 
@@ -895,13 +904,14 @@ async def process_email(event, state):
     await state.update_data(email=event.text)
     data = await state.get_data()
     await state.set_state(None)
-    
+
     await event.answer(
         "✅ **Регистрация завершена!**\n\n"
         f"👤 Имя: {data['name']}\n"
         f"🔢 Возраст: {data['age']}\n"
         f"📧 Email: {data['email']}\n\n"
-        "Спасибо за регистрацию! 🎉"
+        "Спасибо за регистрацию! 🎉\n\n"
+        "Отправьте /start для возврата в главное меню."
     )
 
 
@@ -1000,7 +1010,8 @@ async def quiz_q3(event, state):
     await event.answer(
         f"🎯 **Результаты викторины**\n\n"
         f"{result_text}\n\n"
-        f"Ваш счет: **{score}/3**"
+        f"Ваш счет: **{score}/3**\n\n"
+        "Отправьте /start для возврата в главное меню."
     )
 
 
@@ -1274,7 +1285,7 @@ async def handle_quiz_callback(event, state):
 
         await event.bot.edit_message(
             message_id=msg_id,
-            text=f"🎯 **Результаты викторины**\n\n{result}\n\nВаш счет: **{new_score}/3**",
+            text=f"🎯 **Результаты викторины**\n\n{result}\n\nВаш счет: **{new_score}/3**\n\nОтправьте /start для возврата в главное меню.",
         )
 
 
