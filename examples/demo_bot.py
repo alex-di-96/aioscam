@@ -714,6 +714,7 @@ def _settings_keyboard(current_locale: str = "ru") -> KeyboardBuilder:
 @main_router.bot_started()
 async def on_bot_started(event, state):
     """Handle bot_started — check for deep link payload, track user in DB"""
+    logger.info(f"bot_started: payload={event.payload}, user_id={event.user_id}")
     # Track user in database (example for developers)
     chat_id = event.chat_id or 0
     user_id = event.user_id or 0
