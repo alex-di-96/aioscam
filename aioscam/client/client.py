@@ -6,6 +6,7 @@ import json
 import logging
 import mimetypes
 import os
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 import aiohttp
@@ -322,10 +323,19 @@ class AioScamClient:
 
     async def download_file(self, path: str, url: str, token: str) -> int:
         """
-        Download a media file using Bearer token auth.
+        Download a media file to disk using Bearer token auth.
+
+        When the caller doesn't know the final filename yet, generate a unique
+        temp name with datetime precision to avoid collisions (the global rate
+        limiter makes simultaneous calls practically impossible, but datetime
+        ms gives an extra guarantee):
+
+            from datetime import datetime
+            tmp = f"/tmp/aioscam_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+            status = await client.download_file(tmp, url, token)
 
         Args:
-            path: Local path to save file
+            path: Local path to save file (caller's responsibility to name it)
             url: Media URL (from attachment payload)
             token: Access token (from attachment payload)
 
@@ -339,6 +349,61 @@ class AioScamClient:
                 async with aiofiles.open(path, "wb") as f:
                     await f.write(await resp.read())
             return resp.status
+
+    async def download_file_bytes(self, url: str, token: str) -> Optional[bytes]:
+        """
+        Download a media file fully into memory and return raw bytes.
+
+        Use this when you need to process the file immediately (resize, convert,
+        read metadata) without touching the filesystem.  For large files or when
+        you need to persist the result, prefer download_file() instead.
+
+        Example — process in memory then send back:
+            data = await client.download_file_bytes(url, token)
+            if data:
+                # manipulate `data` (PIL, etc.) …
+                result_bytes = process(data)
+
+        Example — fallback to temp file when in-memory is not an option:
+            from datetime import datetime
+            tmp = f"/tmp/aioscam_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.bin"
+            await client.download_file(tmp, url, token)
+
+        Args:
+            url: Media URL (from attachment payload)
+            token: Access token (from attachment payload)
+
+        Returns:
+            File content as bytes, or None if download failed
+        """
+        headers = {"Authorization": f"Bearer {token}"}
+        session = await self._get_session()
+        async with session.get(url, headers=headers) as resp:
+            if resp.status == 200:
+                return await resp.read()
+            return None
+
+    @staticmethod
+    def make_temp_path(ext: str = "", directory: str = "/tmp") -> str:
+        """
+        Generate a unique temp file path using datetime with microsecond precision.
+
+        The global rate limiter makes two simultaneous downloads practically
+        impossible, and microsecond timestamps make collisions effectively zero.
+
+        Args:
+            ext: File extension including dot, e.g. ".jpg" (optional)
+            directory: Directory to place the temp file (default /tmp)
+
+        Returns:
+            Full path string, e.g. "/tmp/aioscam_20260528_153042_847291.jpg"
+
+        Example:
+            path = AioScamClient.make_temp_path(".jpg")
+            await client.download_file(path, url, token)
+        """
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        return os.path.join(directory, f"aioscam_{ts}{ext}")
 
     # ── End file upload / download ──────────────────────────────────────────
 

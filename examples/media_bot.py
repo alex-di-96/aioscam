@@ -12,9 +12,16 @@ Demonstrates sending and receiving media files:
 """
 
 import asyncio
+import io
 import logging
 import os
 from pathlib import Path
+
+try:
+    from PIL import Image as _PILImage
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
 
 logging.basicConfig(
     level=logging.INFO,
@@ -250,29 +257,26 @@ async def handle_incoming_media(event):
 
 @dp.message_created(Command("buffer_demo"))
 async def cmd_buffer_demo(event):
-    """Demo: create image from bytes buffer and send"""
-    # Minimal 1x1 red PNG
-    png_bytes = bytes([
-        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,  # PNG signature
-        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,   # IHDR chunk
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,   # 1x1
-        0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,   # 8bit RGB
-        0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,   # IDAT chunk
-        0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
-        0x00, 0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC,
-        0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,   # IEND
-        0x44, 0xAE, 0x42, 0x60, 0x82,
-    ])
+    """Demo: generate 200×200 green square via PIL and send from memory buffer"""
+    if not HAS_PIL:
+        await event.answer("⚠️ PIL не установлен: pip install pillow")
+        return
 
-    media = InputMediaBuffer(png_bytes, "red_pixel.png", UploadType.IMAGE)
-    await event.answer("⏳ Отправляю изображение из буфера памяти...")
+    # Create 200×200 green square in memory — no file on disk
+    img = _PILImage.new("RGB", (200, 200), color=(0, 200, 0))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    png_bytes = buf.getvalue()
+
+    media = InputMediaBuffer(png_bytes, "green_square.png", UploadType.IMAGE)
+    await event.answer("⏳ Отправляю 200×200 зелёный квадрат из буфера памяти...")
 
     try:
         await event.bot.send_media(
             chat_id=event.chat_id,
             user_id=event.user_id,
             media=media,
-            caption="🔴 Изображение создано из bytes buffer (1×1 px PNG)",
+            caption="🟩 Изображение создано через PIL в памяти (200×200 px, без файла на диске)",
         )
     except Exception as e:
         await event.answer(f"❌ Ошибка: {e}")

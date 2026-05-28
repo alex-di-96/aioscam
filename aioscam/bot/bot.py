@@ -1172,7 +1172,14 @@ class Bot:
 
     async def download_file(self, path: str, url: str, token: str) -> int:
         """
-        Download a media file from Max servers.
+        Download a media file from Max servers and save to disk.
+
+        When you don't have a final filename yet, use make_temp_path() to get
+        a unique datetime-stamped path:
+
+            from aioscam import Bot
+            path = Bot.make_temp_path(".jpg")          # "/tmp/aioscam_20260528_…jpg"
+            status = await bot.download_file(path, url, token)
 
         Args:
             path: Local path to save the file
@@ -1183,6 +1190,49 @@ class Bot:
             HTTP status code (200 = success)
         """
         return await self._client.download_file(path, url, token)
+
+    async def download_file_bytes(self, url: str, token: str) -> Optional[bytes]:
+        """
+        Download a media file from Max servers into memory (no filesystem).
+
+        Use this when you need to process the content immediately — resize,
+        convert, analyse — without writing a temp file.  For large files or
+        when persistence is needed, use download_file() instead.
+
+        Example (in-memory processing):
+            data = await bot.download_file_bytes(url, token)
+            if data:
+                # pass `data` to PIL, ffmpeg, etc.
+                processed = my_transform(data)
+                await bot.send_photo(chat_id, user_id, photo=processed)
+
+        Example (temp-file fallback):
+            path = Bot.make_temp_path(".jpg")
+            await bot.download_file(path, url, token)
+
+        Args:
+            url: Media URL (from attachment payload.url)
+            token: Access token (from attachment payload.token)
+
+        Returns:
+            File content as bytes, or None if download failed
+        """
+        return await self._client.download_file_bytes(url, token)
+
+    @staticmethod
+    def make_temp_path(ext: str = "", directory: str = "/tmp") -> str:
+        """
+        Generate a unique temp file path using datetime with microsecond precision.
+
+        Args:
+            ext: File extension including dot, e.g. ".jpg"
+            directory: Target directory (default /tmp)
+
+        Returns:
+            Path string like "/tmp/aioscam_20260528_153042_847291.jpg"
+        """
+        from aioscam.client.client import AioScamClient
+        return AioScamClient.make_temp_path(ext, directory)
 
     async def _send_with_media(
         self,

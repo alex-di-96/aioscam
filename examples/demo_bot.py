@@ -38,6 +38,14 @@ from aioscam.fsm import State, StatesGroup
 from aioscam.utils.keyboard import KeyboardBuilder
 from aioscam.utils.deep_linking import create_deep_link
 
+# PIL — image processing (demo only, NOT part of the framework)
+try:
+    import io as _io
+    from PIL import Image as _PILImage, ImageDraw as _ImageDraw, ImageFont as _ImageFont
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
+
 # ==================== Deep Link Obfuscation (demo bot only) ====================
 # Random shift + hash for secure invite links — NOT part of the framework!
 
@@ -138,25 +146,32 @@ except ImportError:
 DB_PATH = Path(__file__).parent / "demo_bot.db"
 DB_URL = f"sqlite+aiosqlite:///{DB_PATH}"
 
-class Base(DeclarativeBase):
-    pass
+if HAS_SQLALCHEMY:
+    class Base(DeclarativeBase):
+        pass
 
-class User(Base):
-    """
-    Example user model for AioScam developers.
-    Demonstrates async SQLAlchemy integration.
-    """
-    __tablename__ = "users"
+    class User(Base):
+        """
+        Example user model for AioScam developers.
+        Demonstrates async SQLAlchemy integration.
+        """
+        __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    chat_id: Mapped[int] = mapped_column(Integer, unique=True)
-    user_id: Mapped[int] = mapped_column(Integer, unique=True)
-    first_name: Mapped[str] = mapped_column(String(255), default="")
-    last_name: Mapped[str] = mapped_column(String(255), default="")
-    username: Mapped[str] = mapped_column(String(255), nullable=True)
-    locale: Mapped[str] = mapped_column(String(10), default="ru")
-    created_at = mapped_column(DateTime, server_default=func.now())
-    updated_at = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+        id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+        chat_id: Mapped[int] = mapped_column(Integer, unique=True)
+        user_id: Mapped[int] = mapped_column(Integer, unique=True)
+        first_name: Mapped[str] = mapped_column(String(255), default="")
+        last_name: Mapped[str] = mapped_column(String(255), default="")
+        username: Mapped[str] = mapped_column(String(255), nullable=True)
+        locale: Mapped[str] = mapped_column(String(10), default="ru")
+        created_at = mapped_column(DateTime, server_default=func.now())
+        updated_at = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+else:
+    class Base:  # type: ignore[no-redef]
+        pass
+
+    class User:  # type: ignore[no-redef]
+        pass
 
 
 class Database:
@@ -256,6 +271,59 @@ class QuizState(StatesGroup):
 class FeedbackState(StatesGroup):
     waiting_feedback = State()
     waiting_text = State()
+
+
+class ImageState(StatesGroup):
+    """FSM states for image processing flow"""
+    waiting_image = State()  # waiting for user to send a photo
+
+
+# ==================== Image Processing (demo only, PIL) ====================
+# NOT part of the framework — framework only handles upload/download transport.
+
+_WATERMARK_FONT_PATHS = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+]
+
+
+def _process_image_demo(image_bytes: bytes) -> bytes:
+    """
+    Flip horizontal + resize 800×600 + AioScam watermark.
+    Returns JPEG bytes. Raises RuntimeError if PIL not installed.
+    """
+    if not HAS_PIL:
+        raise RuntimeError("PIL not available: pip install pillow")
+
+    img = _PILImage.open(_io.BytesIO(image_bytes))
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+
+    img = img.transpose(_PILImage.Transpose.FLIP_LEFT_RIGHT)
+    img = img.resize((800, 600), _PILImage.Resampling.LANCZOS)
+
+    draw = _ImageDraw.Draw(img)
+    text = "AioScam"
+    font = None
+    for fp in _WATERMARK_FONT_PATHS:
+        try:
+            font = _ImageFont.truetype(fp, 28)
+            break
+        except (IOError, OSError):
+            continue
+    if font is None:
+        font = _ImageFont.load_default()
+
+    bbox = draw.textbbox((0, 0), text, font=font)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    x, y = 800 - tw - 15, 600 - th - 15
+    draw.text((x + 2, y + 2), text, fill=(0, 0, 0), font=font)   # shadow
+    draw.text((x, y), text, fill=(255, 255, 255), font=font)       # text
+
+    buf = _io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    return buf.getvalue()
 
 
 # ==================== Middleware ====================
@@ -480,6 +548,9 @@ async def cmd_start(event, state):
     # EN: Stats — show HTML formatting and framework version
     builder.callback("📊 Статистика", "action:stats")
     builder.row()
+    # 🖼️ Изображение — FSM: получить фото → отразить + resize 800×600 + watermark → вернуть
+    # EN: Image — FSM: receive photo → flip + resize 800×600 + watermark → return
+    builder.callback("🖼️ Изображение", "action:image")
     # 🔗 Пригласить друга — генерация диплинка для реферальной программы
     # EN: Invite friend — generate deep link for referral program
     builder.callback("🔗 Пригласить друга", "action:invite")
@@ -794,12 +865,105 @@ async def on_bot_started(event, state):
 
 @main_router.message_created(F.message.body.text == "")
 async def handle_contact(event):
-    """Обработка контакта (сообщение без текста с вложением contact)"""
+    """
+    Обработка сообщений без текста (контакт, изображение и др.)
+
+    Порядок проверок:
+    1. FSM waiting_image → скачать фото в память, PIL-обработка, отправить обратно
+    2. FSM waiting_phone → завершить регистрацию с телефоном
+    3. Обычный contact (вне FSM) → показать данные контакта
+    """
     raw_data = event.data.get('raw_update', {})
     message = raw_data.get('message', {})
     body = message.get('body', {})
     attachments = body.get('attachments', [])
+    state = event.data.get('state')
 
+    # ── 1. FSM: waiting_image ──────────────────────────────────────────────
+    if state:
+        current_state_name = await state.get_state()
+        if current_state_name == ImageState.waiting_image.full_name:
+            # Find image attachment
+            image_att = next((a for a in attachments if a.get('type') == 'image'), None)
+            if not image_att:
+                await event.answer(
+                    "⚠️ Это не изображение. Пришлите **фото**, или /cancel для отмены."
+                )
+                return
+
+            # Extract download URL and token
+            payload = image_att.get('payload', {})
+            url, token = None, None
+            if isinstance(payload, dict):
+                url = payload.get('url')
+                token = payload.get('token')
+                # Image payload may use photos[key].token structure
+                if not token:
+                    photos = payload.get('photos', {})
+                    if isinstance(photos, dict) and photos:
+                        key = next(iter(photos))
+                        p = photos[key]
+                        if isinstance(p, dict):
+                            url = p.get('url') or url
+                            token = p.get('token')
+
+            if not url or not token:
+                await event.answer("⚠️ Не удалось получить ссылку на изображение. Попробуйте ещё раз.")
+                return
+
+            await event.answer("⏳ Обрабатываю...")
+
+            # Download in-memory — no temp file needed
+            # (to save to disk instead: Bot.make_temp_path(".jpg") + download_file)
+            image_bytes = await event.bot.download_file_bytes(url, token)
+            if not image_bytes:
+                await event.answer("❌ Не удалось скачать изображение.")
+                return
+
+            try:
+                processed = _process_image_demo(image_bytes)
+            except RuntimeError as e:
+                await event.answer(f"❌ {e}")
+                return
+
+            await state.set_state(None)
+
+            # Send processed image with "Back to menu" button
+            builder = KeyboardBuilder(inline=True)
+            builder.callback("↩️ Назад в меню", "action:start_menu")
+            kb = builder.build().to_dict()
+
+            from aioscam import InputMediaBuffer, UploadType
+            from aioscam.utils.media import process_input_media
+            media = InputMediaBuffer(processed, "processed.jpg", UploadType.IMAGE)
+            att_dict = await process_input_media(event.bot, media)
+
+            # Try to send image + keyboard together
+            try:
+                await event.bot.send_message(
+                    chat_id=event.chat_id,
+                    user_id=event.user_id,
+                    text="✅ **Готово!** Вот ваше изображение:",
+                    attachments=[att_dict],
+                    keyboard=kb,
+                )
+            except Exception:
+                # Fallback: send image, then separate message with button
+                import asyncio
+                await asyncio.sleep(2)
+                await event.bot.send_message(
+                    chat_id=event.chat_id,
+                    user_id=event.user_id,
+                    text="✅ **Готово!**",
+                    attachments=[att_dict],
+                )
+                await event.answer(
+                    "Нажмите кнопку для возврата в меню:",
+                    keyboard=kb,
+                )
+            return
+
+    # ── 2–3. Contact handling (waiting_phone + regular) ────────────────────
     for att in attachments:
         if att.get('type') == 'contact':
             payload = att.get('payload', {})
@@ -826,7 +990,6 @@ async def handle_contact(event):
                 phone = phone.strip()
                 phone_display = f"...{phone[-4:]}" if len(phone) > 4 else phone
 
-            # If user is in registration waiting_phone state — complete registration
             state = event.data.get('state')
             if state:
                 current_state_name = await state.get_state()
@@ -1112,6 +1275,16 @@ async def catch_all_message(event):
     Must be LAST in the router — catches messages that didn't match any specific handler.
     Used for debugging deep links and understanding what MAX sends.
     """
+    # If user is in waiting_image state and sends text instead of photo — remind them
+    state = event.data.get('state')
+    if state:
+        current = await state.get_state()
+        if current == ImageState.waiting_image.full_name:
+            await event.answer(
+                "📸 Жду **изображение**. Отправьте фото, или /cancel для отмены."
+            )
+            return
+
     # Get raw update data
     raw_data = event.data.get('raw_update', {})
 
@@ -1336,6 +1509,10 @@ async def handle_callback(event):
         "action:cancel": ("cancel",),
         # action:invite — сгенерировать диплинк для реферальной программы
         "action:invite": ("invite",),
+        # action:image — запустить FSM обработки изображения
+        "action:image": ("image",),
+        # action:start_menu — вернуться в главное меню (после обработки изображения)
+        "action:start_menu": ("start_menu",),
     }
 
     if callback_data in callbacks:
@@ -1446,6 +1623,32 @@ async def handle_callback(event):
             # EN: Generate deep link for referral program
             await event.hide_keyboard("🔗 Приглашение")
             await _handle_invite(event)
+
+        elif command == "start_menu":
+            # RU: Возврат в главное меню — вызываем cmd_start напрямую
+            # EN: Return to main menu
+            await event.hide_keyboard()
+            if state:
+                await state.set_state(None)
+            await cmd_start(event, state)
+
+        elif command == "image" and state:
+            # RU: Запуск FSM обработки изображения — ожидаем фото от пользователя
+            # EN: Start image FSM — waiting for user to send a photo
+            if not HAS_PIL:
+                await event.answer("⚠️ PIL не установлен. Установите: pip install pillow")
+                return
+            await state.set_state(ImageState.waiting_image)
+            await event.hide_keyboard("🖼️ Обработка изображения")
+            await event.answer(
+                "📸 **Пришлите изображение**\n\n"
+                "Я его обработаю:\n"
+                "• 🔄 Отражу по горизонтали\n"
+                "• 📐 Приведу к размеру 800×600\n"
+                "• 🏷️ Поставлю водяной знак AioScam\n\n"
+                "Или /cancel для отмены."
+            )
+
         else:
             await event.hide_keyboard()
             await event.answer(f"🔘 Нажата кнопка: {callback_data}")
