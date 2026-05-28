@@ -10,6 +10,8 @@ AioScam Framework - Полнофункциональный тестовый бо
 - Magic filters
 - Router систему
 - Formatting utilities
+- I18n (многоязычность)
+- SQLAlchemy async (база данных пользователей)
 """
 
 import asyncio
@@ -17,6 +19,7 @@ import logging
 import time
 import sys
 import os
+from pathlib import Path
 
 # Setup logging
 logging.basicConfig(
@@ -29,11 +32,124 @@ import os
 import sys
 import fcntl
 
-from aioscam import Bot, Dispatcher, Router, Command, F, StateFilter, BotCommand
+from aioscam import Bot, Dispatcher, Router, Command, F, StateFilter, BotCommand, I18n
 from aioscam.enums import ParseMode, SenderAction
 from aioscam.fsm import State, StatesGroup
 from aioscam.utils.keyboard import KeyboardBuilder
 from aioscam.utils.deep_linking import create_deep_link
+
+# ==================== SQLAlchemy async (User tracking) ====================
+# This is an EXAMPLE for developers — shows how to use async SQLAlchemy with AioScam.
+# NOT part of the framework itself.
+
+try:
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+    from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+    from sqlalchemy import Integer, String, DateTime, func, select, text
+    HAS_SQLALCHEMY = True
+except ImportError:
+    HAS_SQLALCHEMY = False
+    logger.warning("SQLAlchemy not installed. User tracking disabled. Install: pip install sqlalchemy[asyncio]")
+
+DB_PATH = Path(__file__).parent / "demo_bot.db"
+DB_URL = f"sqlite+aiosqlite:///{DB_PATH}"
+
+Base = DeclarativeBase()
+
+class User(Base):
+    """
+    Example user model for AioScam developers.
+    Demonstrates async SQLAlchemy integration.
+    """
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    chat_id: Mapped[int] = mapped_column(Integer, unique=True)
+    user_id: Mapped[int] = mapped_column(Integer, unique=True)
+    first_name: Mapped[str] = mapped_column(String(255), default="")
+    last_name: Mapped[str] = mapped_column(String(255), default="")
+    username: Mapped[str] = mapped_column(String(255), nullable=True)
+    locale: Mapped[str] = mapped_column(String(10), default="ru")
+    created_at = mapped_column(DateTime, server_default=func.now())
+    updated_at = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class Database:
+    """Async database wrapper for demo bot"""
+
+    def __init__(self):
+        self.engine = None
+        self.session_factory = None
+
+    async def init(self):
+        """Initialize database"""
+        if not HAS_SQLALCHEMY:
+            logger.info("Database: SQLAlchemy not available, skipping")
+            return
+        self.engine = create_async_engine(DB_URL, echo=False)
+        self.session_factory = async_sessionmaker(self.engine, class_=AsyncSession)
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info(f"Database: initialized ({DB_PATH})")
+
+    async def add_or_update_user(self, chat_id, user_id, first_name="", last_name="", username="", locale="ru"):
+        """Add new user or update existing (tracks new users only)"""
+        if not self.session_factory:
+            return
+        async with self.session_factory() as session:
+            async with session.begin():
+                result = await session.execute(select(User).where(User.user_id == user_id))
+                existing = result.scalar_one_or_none()
+                if existing:
+                    existing.first_name = first_name
+                    existing.last_name = last_name
+                    existing.username = username
+                    existing.updated_at = func.now()
+                else:
+                    user = User(
+                        chat_id=chat_id,
+                        user_id=user_id,
+                        first_name=first_name,
+                        last_name=last_name,
+                        username=username,
+                        locale=locale,
+                    )
+                    session.add(user)
+                    logger.info(f"DB: New user added: {first_name} {last_name} (user_id={user_id})")
+
+    async def set_user_locale(self, user_id, locale):
+        """Update user locale"""
+        if not self.session_factory:
+            return
+        async with self.session_factory() as session:
+            async with session.begin():
+                result = await session.execute(select(User).where(User.user_id == user_id))
+                user = result.scalar_one_or_none()
+                if user:
+                    user.locale = locale
+
+    async def get_user_count(self):
+        """Get total user count"""
+        if not self.session_factory:
+            return 0
+        async with self.session_factory() as session:
+            result = await session.execute(text("SELECT COUNT(*) FROM users"))
+            return result.scalar()
+
+    async def close(self):
+        """Close database connection"""
+        if self.engine:
+            await self.engine.dispose()
+
+
+# Global database instance
+db = Database()
+
+# ==================== I18n ====================
+
+# Load translations from locales/ directory (next to demo_bot.py)
+LOCALES_DIR = Path(__file__).parent.parent / "locales"
+i18n = I18n(path=str(LOCALES_DIR), default_locale="ru")
 
 # ==================== FSM States ====================
 
@@ -210,7 +326,9 @@ async def cmd_start(event, state):
     builder.row()
     builder.callback("🔗 Пригласить друга", "action:invite")
     builder.row()
+    builder.callback("⚙️ Настройки", "action:settings")
     builder.callback("❓ Помощь", "action:help")
+    builder.row()
     builder.callback("⏹️ Отмена", "action:cancel")
 
     keyboard = builder.build()
@@ -405,9 +523,51 @@ async def _handle_invite(event):
     )
 
 
+def _settings_keyboard(current_locale: str = "ru") -> KeyboardBuilder:
+    """Settings keyboard with language selection"""
+    builder = KeyboardBuilder(inline=True)
+    # Highlight current locale with checkmark
+    ru_label = "🇷🇺 Русский ✅" if current_locale == "ru" else "🇷🇺 Русский"
+    en_label = "🇬🇧 English ✅" if current_locale == "en" else "🇬🇧 English"
+    builder.callback(ru_label, "lang:ru")
+    builder.callback(en_label, "lang:en")
+    builder.row()
+    builder.callback("🔙 Назад", "action:cancel")
+    return builder
+
+
 @main_router.bot_started()
 async def on_bot_started(event, state):
-    """Handle bot_started — check for deep link payload"""
+    """Handle bot_started — check for deep link payload, track user in DB"""
+    # Track user in database (example for developers)
+    chat_id = event.chat_id or 0
+    user_id = event.user_id or 0
+    first_name = ""
+    last_name = ""
+    username = ""
+
+    if hasattr(event, 'from_user') and event.from_user:
+        user = event.from_user
+        if hasattr(user, 'first_name'):
+            first_name = user.first_name or ""
+        if hasattr(user, 'last_name'):
+            last_name = user.last_name or ""
+        if hasattr(user, 'username'):
+            username = user.username or ""
+
+    # Detect locale from Max API
+    locale = event.locale or "ru"
+
+    if HAS_SQLALCHEMY:
+        await db.add_or_update_user(
+            chat_id=chat_id,
+            user_id=user_id,
+            first_name=first_name,
+            last_name=last_name,
+            username=username,
+            locale=locale,
+        )
+
     if event.payload:
         # Deep link: user came via https://max.ru/<bot>?start=<payload>
         payload = event.payload
@@ -843,8 +1003,8 @@ async def handle_callback(event):
         "action:quiz": ("quiz",),
         "action:feedback": ("feedback",),
         "action:stats": ("stats",),
+        "action:settings": ("settings",),
         "action:help": ("help",),
-        "action:cancel": ("cancel",),
         "action:cancel": ("cancel",),
     }
 
@@ -901,6 +1061,19 @@ async def handle_callback(event):
             await event.hide_keyboard("📊 Статистика")
             await cmd_stats(event)
 
+        elif command == "settings":
+            user_id = event.user_id or 0
+            current_locale = event.data.get('locale', event.locale or 'ru')
+            kb = _settings_keyboard(current_locale)
+            await event.bot.send_callback(
+                callback_id=event.callback_id,
+                message="⚙️ **Настройки**\n\n"
+                        "Выберите язык интерфейса:\n"
+                        "🇷🇺 Русский — по умолчанию\n"
+                        "🇬🇧 English",
+                keyboard=kb.to_dict(),
+            )
+
         elif command == "help":
             await event.hide_keyboard("📖 Справка")
             await cmd_help(event)
@@ -925,6 +1098,24 @@ async def handle_callback(event):
         else:
             await event.hide_keyboard()
             await event.answer(f"🔘 Нажата кнопка: {callback_data}")
+
+    # Language selection (outside main callbacks)
+    elif callback_data.startswith("lang:"):
+        locale = callback_data.split(":")[1]
+        event.data['locale'] = locale
+        # Save to DB if user exists
+        if HAS_SQLALCHEMY and event.user_id:
+            await db.set_user_locale(event.user_id, locale)
+
+        # Show settings again with updated checkmark
+        kb = _settings_keyboard(locale)
+        lang_name = "Русский" if locale == "ru" else "English"
+        await event.bot.send_callback(
+            callback_id=event.callback_id,
+            message=f"✅ Язык изменён на **{lang_name}**",
+            keyboard=kb.to_dict(),
+        )
+
     else:
         await event.hide_keyboard()
         await event.answer(f"🔘 Неизвестная кнопка: {callback_data}")
@@ -946,10 +1137,12 @@ dp.include_router(main_router)
 async def main():
     """Запуск бота"""
     from aioscam import __version__
-    # Config is auto-loaded from .env via get_config()
     from aioscam.config import get_config
     config = get_config()
     config.setup_logging()
+
+    # Initialize database (SQLAlchemy async example)
+    await db.init()
 
     bot = Bot(parse_mode=ParseMode.MARKDOWN)
     
@@ -991,6 +1184,7 @@ async def main():
         logger.error(f"Bot error: {e}", exc_info=True)
     finally:
         await bot.close()
+        await db.close()
 
 
 PID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.demo_bot.pid')
