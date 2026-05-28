@@ -1,55 +1,51 @@
-# AioScam — Документация
+# AioScam — Документация (RU)
 
-## Версия
-
-**v0.1.1** — Production Ready
+**v0.1.7** | [English](../en/README.md)
 
 ## Оглавление
 
 1. [Установка](#установка)
 2. [Быстрый старт](#быстрый-старт)
 3. [Архитектура](#архитектура)
-4. [Bot](#bot)
-5. [Dispatcher и Router](#dispatcher-и-router)
-6. [Фильтры](#фильтры)
-7. [FSM](#fsm)
-8. [Middleware](#middleware)
-9. [Клавиатуры](#клавиатуры)
-10. [Webhook](#webhook)
-11. [Конфигурация](#конфигурация)
+4. [Bot — методы](#bot)
+5. [Медиафайлы](#медиафайлы)
+6. [Dispatcher и Router](#dispatcher-и-router)
+7. [EventContext](#eventcontext)
+8. [Фильтры](#фильтры)
+9. [FSM](#fsm)
+10. [Middleware](#middleware)
+11. [Клавиатуры](#клавиатуры)
+12. [Deep links](#deep-links)
+13. [I18n](#i18n)
+14. [Rate Limiter](#rate-limiter)
+15. [Webhook](#webhook)
+16. [Конфигурация](#конфигурация)
 
 ---
 
 ## Установка
 
 ```bash
-# Базовая установка
-pip install aioscam
+# Из исходного кода (разработка)
+git clone https://github.com/alex-di-96/aioscam.git
+cd aioscam
+pip install -e .
 
 # С поддержкой FastAPI
 pip install aioscam[fastapi]
 
-# Для разработки
-pip install aioscam[dev]
+# С поддержкой Litestar
+pip install aioscam[litestar]
 
-# Из исходного кода
-git clone https://github.com/alex-di-96/aioscam.git
-cd aioscam
-pip install -e .
+# Режим разработки (pytest, ruff, mypy)
+pip install aioscam[dev]
 ```
 
-### Требования
-
-- Python 3.9–3.12
-- aiohttp >= 3.9.0
-- magic-filter >= 1.0.0
-- pydantic >= 2.0.0
+**Требования:** Python 3.9–3.12, aiohttp>=3.9, aiofiles>=23.0, pydantic>=2.0, magic-filter>=1.0
 
 ---
 
 ## Быстрый старт
-
-### Эхо-бот (режим polling)
 
 ```python
 import asyncio
@@ -61,28 +57,25 @@ router = Router()
 
 @router.message_created(Command("start"))
 async def cmd_start(event):
-    await event.answer("Привет! Напиши мне что-нибудь!")
+    await event.answer("Привет! Напиши мне что-нибудь.")
 
 @router.message_created()
 async def echo(event):
-    await event.answer(event.message.body.text)
+    await event.answer(event.text)
 
 dp.include_router(router)
 
 async def main():
-    bot = Bot()  # Токен из переменной окружения MAX_BOT_TOKEN
+    bot = Bot()  # Токен из MAX_BOT_TOKEN
     await dp.start_polling(bot)
 
 asyncio.run(main())
 ```
 
-### Переменная окружения
-
-Создайте файл `.env`:
-
+`.env`:
 ```env
-MAX_BOT_TOKEN=ваш_токен_бота
-AIOSCAM_ENV=prod
+MAX_BOT_TOKEN=ваш_токен
+AIOSCAM_ENV=prod   # debug | test | prod
 ```
 
 ---
@@ -91,134 +84,198 @@ AIOSCAM_ENV=prod
 
 ```
 aioscam/
-├── bot/              # Клиент бота (35 API методов)
-├── client/           # HTTP клиент (обёртка aiohttp)
-├── dispatcher/       # Dispatcher, Router, EventContext, StateGuard
-├── enums/            # Перечисления (12 файлов)
-├── exceptions/       # Классы исключений
-├── filters/          # BaseFilter, Command, Text, State, Magic Filters
-├── fsm/              # State, StatesGroup, MemoryStorage, Scene
-├── handler/          # MessageHandler, CallbackHandler, EventHandler
-├── methods/          # Обёртки API методов
-├── middleware/       # BaseMiddleware, MiddlewareManager
-├── types/            # Pydantic модели (User, Chat, Message и др.)
-├── utils/            # KeyboardBuilder, форматирование, deep linking
-└── webhook/          # Обработчик веб-хуков aiohttp
+├── bot/          # Bot — все API методы
+├── client/       # HTTP клиент (aiohttp + rate limiter + upload/download)
+├── dispatcher/   # Dispatcher, Router, EventContext, StateGuard
+├── enums/        # 15 enum-файлов
+├── exceptions/   # 12 классов исключений
+├── filters/      # Command, Text, StartCommand, StateFilter, ContentType, F
+├── fsm/          # State, StatesGroup, MemoryStorage
+├── handler/      # MessageHandler, CallbackHandler, EventHandler
+├── i18n/         # I18n — JSON-переводы, авто-локаль
+├── limiter/      # RateLimiter, RateLimitConfig
+├── methods/      # BaseMethod, GetMe, SendMessage, GetUpdates
+├── middleware/   # BaseMiddleware, MiddlewareManager
+├── types/        # Pydantic-модели (User, Chat, Message, Attachment, …)
+└── utils/        # KeyboardBuilder, formatting, deep_linking, media
 ```
 
 ---
 
 ## Bot
 
-### Основные методы
-
-#### `send_message()`
-
-Отправка текстового сообщения.
+### Сообщения
 
 ```python
-msg = await bot.send_message(
-    chat_id=123456,
-    text="Привет, мир!",
-    user_id=789012
-)
+await bot.send_message(chat_id=123, user_id=456, text="Привет!", format="markdown")
+await bot.edit_message(message_id="mid.abc", text="Новый текст")
+await bot.delete_message(message_id="mid.abc")
+await bot.send_action(chat_id=123, action=SenderAction.TYPING)
 ```
 
-**Параметры:**
-- `chat_id: int | str` — ID чата
-- `text: str` — Текст сообщения
-- `user_id: int | None` — ID пользователя (для личных сообщений)
-- `reply_to_mid: str | None` — ID сообщения для ответа
-- `keyboard: dict | None` — Inline клавиатура
-
-**Возвращает:** `dict` — данные отправленного сообщения
-
-#### `edit_message()`
-
-Редактирование сообщения.
+### Медиафайлы
 
 ```python
-await bot.edit_message(
-    chat_id=123456,
-    message_id="mid.abc123",
-    text="Обновлённый текст"
-)
+# Отправка по пути (тип определяется по расширению)
+await bot.send_photo(chat_id=123, user_id=456, photo="photo.jpg", caption="Фото!")
+await bot.send_video(chat_id=123, user_id=456, video="video.mp4")
+await bot.send_audio(chat_id=123, user_id=456, audio="song.mp3")
+await bot.send_document(chat_id=123, user_id=456, document="report.pdf")
+await bot.send_media(chat_id=123, user_id=456, media="file.ext")  # авто-тип
+
+# Отправка из буфера памяти (без файла на диске)
+from aioscam import InputMediaBuffer, UploadType
+media = InputMediaBuffer(image_bytes, "photo.jpg", UploadType.IMAGE)
+await bot.send_photo(chat_id=123, user_id=456, photo=media)
+
+# Скачивание в память
+data = await bot.download_file_bytes(url, token)  # → bytes | None
+
+# Скачивание в файл
+path = Bot.make_temp_path(".jpg")  # уникальное имя по datetime
+await bot.download_file(path, url, token)          # → HTTP status code
 ```
 
-#### `delete_message()`
-
-Удаление сообщения.
+### Callback и действия
 
 ```python
-await bot.delete_message(message_id="mid.abc123")
+await bot.send_callback(callback_id=..., message="Ответ", notification="Попап")
+await bot.send_action(chat_id=123, action=SenderAction.TYPING)
 ```
 
-#### `request_contact()`
-
-Запрос контактной информации.
+### Чаты и пользователи
 
 ```python
-await bot.request_contact(
-    chat_id=123456,
-    text="Поделитесь контактом:",
-    button_text="📱 Поделиться контактом"
-)
+me = await bot.get_me()
+chats = await bot.get_chats()
+chat = await bot.get_chat_by_id(chat_id=123)
+members = await bot.get_chat_members(chat_id=123)
+await bot.add_chat_members(chat_id=123, user_ids=[456, 789])
+await bot.remove_member_chat(chat_id=123, user_id=456)
 ```
 
-#### `request_location()`
-
-Запрос геолокации.
+### Команды и информация бота
 
 ```python
-await bot.request_location(
-    chat_id=123456,
-    text="Поделитесь геолокацией:",
-    button_text="📍 Поделиться местоположением"
-)
+from aioscam.types.command import BotCommand
+await bot.set_my_commands([
+    BotCommand(name="start", description="Запустить бота"),
+    BotCommand(name="help", description="Справка"),
+])
+await bot.set_bot_info(name="Мой бот", description="Описание бота")
+```
+
+---
+
+## Медиафайлы
+
+### InputMedia — из файла
+
+```python
+from aioscam import InputMedia, UploadType
+
+m = InputMedia("photo.jpg")       # → UploadType.IMAGE
+m = InputMedia("video.mp4")       # → UploadType.VIDEO
+m = InputMedia("song.mp3")        # → UploadType.AUDIO
+m = InputMedia("doc.pdf")         # → UploadType.FILE
+m = InputMedia("file", UploadType.IMAGE)  # явный тип
+```
+
+**Авто-определение по расширению:**
+- `.jpg .jpeg .png .gif .webp .bmp` → IMAGE
+- `.mp4 .mov .avi .mkv .webm` → VIDEO
+- `.mp3 .ogg .wav .m4a .flac .aac .opus` → AUDIO
+- всё остальное → FILE
+
+### InputMediaBuffer — из памяти
+
+```python
+from aioscam import InputMediaBuffer, UploadType
+
+b = InputMediaBuffer(bytes_data, "photo.jpg")            # тип из расширения
+b = InputMediaBuffer(bytes_data, "file", UploadType.FILE)  # явный тип
+```
+
+### Скачивание входящих медиа
+
+```python
+# Из raw_update в хендлере:
+raw = event.data.get("raw_update", {})
+attachments = raw.get("message", {}).get("body", {}).get("attachments", [])
+
+for att in attachments:
+    payload = att.get("payload", {})
+    url = payload.get("url")
+    token = payload.get("token")
+
+    if url and token:
+        # Режим 1: в память (для обработки PIL, конвертации и т.д.)
+        data = await event.bot.download_file_bytes(url, token)
+
+        # Режим 2: в файл с уникальным именем
+        from aioscam import Bot
+        path = Bot.make_temp_path(".jpg")
+        await event.bot.download_file(path, url, token)
+```
+
+### Стикеры
+
+Боты **не могут отправлять** стикеры через Max Bot API. При получении:
+```python
+if att.get("type") == "sticker":
+    code = att.get("payload", {}).get("code")   # код стикера
+    url  = att.get("payload", {}).get("url")    # URL картинки
 ```
 
 ---
 
 ## Dispatcher и Router
 
-### Dispatcher
-
-Центральный компонент обработки обновлений.
-
 ```python
-from aioscam import Dispatcher
+from aioscam import Dispatcher, Router
 
-dp = Dispatcher()
-await dp.start_polling(bot)  # Режим polling
-```
-
-### Router
-
-Маршрутизатор для обработки сообщений.
-
-```python
-from aioscam import Router
-
-router = Router()
+dp = Dispatcher(
+    storage=MemoryStorage(),
+    state_guard_commands={'/cancel', '/start'},
+    state_guard_callbacks={'action:cancel'},
+)
 
 # Вложенные роутеры
 admin_router = Router(name="admin")
-user_router = Router(name="user")
+user_router  = Router(name="user")
+dp.include_router(admin_router)
+dp.include_router(user_router)
 
-router.include_router(admin_router)
-router.include_router(user_router)
-dp.include_router(router)
+await dp.start_polling(bot, skip_updates=True)
 ```
 
-### EventContext
+---
 
-Контекст события, передаваемый в обработчики.
+## EventContext
 
-**Атрибуты:**
-- `event` — данные события
-- `bot` — экземпляр бота
-- `data` — общие данные
-- `state` — контекст FSM
+Контекст события — передаётся первым аргументом в каждый хендлер.
+
+| Свойство | Тип | Описание |
+|----------|-----|----------|
+| `event` | Any | Сырой объект события |
+| `bot` | Bot | Экземпляр бота |
+| `data` | dict | Общие данные запроса |
+| `user_id` | int\|None | ID пользователя |
+| `chat_id` | int\|None | ID чата |
+| `text` | str\|None | Текст сообщения |
+| `payload` | str\|None | Deep link payload |
+| `locale` | str\|None | Локаль пользователя |
+| `callback_data` | str\|None | Данные callback-кнопки |
+| `callback_id` | str\|None | ID callback (для send_callback) |
+| `from_user` | User\|None | Отправитель |
+| `message` | Message\|None | Объект сообщения |
+
+**Методы:**
+```python
+await event.answer("Текст", keyboard=kb, format="markdown")
+await event.hide_keyboard("Новый текст")
+await event.answer_and_hide_keyboard("Текст", keyboard=new_kb)
+```
 
 ---
 
@@ -226,211 +283,226 @@ dp.include_router(router)
 
 ### Command
 
-Фильтрация по командам.
+```python
+@router.message_created(Command("start"))
+@router.message_created(Command(["start", "help"]))  # несколько команд
+```
+
+Аргументы команды доступны через `command_args`:
+```python
+@router.message_created(Command("photo"))
+async def cmd_photo(event, command_args: str = None):
+    # /photo /path/to/file.jpg → command_args = "/path/to/file.jpg"
+```
+
+### StartCommand (Deep link)
 
 ```python
-from aioscam.filters import Command
+from aioscam import StartCommand
 
-@router.message_created(Command("start"))
-async def cmd_start(event):
-    ...
+@router.bot_started(StartCommand())           # любой payload
+@router.bot_started(StartCommand("ref_123"))  # точное совпадение
+@router.bot_started(StartCommand(startswith="ref_"))  # префикс
+@router.message_created(StartCommand())       # повторный вход через диплинк
+```
+
+Payload доступен через `start_payload`:
+```python
+async def handler(event, start_payload: str = None):
+    print(start_payload)  # значение ?start=
 ```
 
 ### Text
 
-Фильтрация по тексту.
-
 ```python
-from aioscam.filters import Text
-
-@router.message_created(Text(contains="привет"))
-async def handle_greeting(event):
-    ...
-
-@router.message_created(Text(startswith="/"))
-async def handle_slash(event):
-    ...
+@router.message_created(Text("привет"))
+@router.message_created(Text(contains=["слово1", "слово2"]))
+@router.message_created(Text(startswith="prefix"))
+@router.message_created(Text(regex=r"\d{4}"))
 ```
 
-### Magic Filters
-
-Декларативная фильтрация.
+### StateFilter
 
 ```python
-from aioscam.filters import F
+from aioscam import StateFilter
+
+@router.message_created(StateFilter(MyState.waiting_name))
+```
+
+### Magic Filter
+
+```python
+from aioscam import F
 
 @router.message_created(F.message.body.text.func(lambda t: "привет" in t.lower()))
-async def handle_hello(event):
-    ...
-
-@router.message_created(F.callback.payload.startswith("action:"))
-async def handle_callback(event):
-    ...
+@router.callback_query(F.callback_data.startswith("action:"))
+@router.message_created(F.message.body.text == "")  # пустой текст (вложения)
 ```
 
 ---
 
 ## FSM
 
-### State и StatesGroup
-
 ```python
 from aioscam.fsm import State, StatesGroup
 
-class Registration(StatesGroup):
-    name = State()
-    email = State()
-    phone = State()
+class MyState(StatesGroup):
+    waiting_name  = State()
+    waiting_age   = State()
+    waiting_email = State()
+    waiting_phone = State()
+
+# В хендлере:
+await state.set_state(MyState.waiting_name)
+await state.update_data(name="Иван")
+data = await state.get_data()    # {"name": "Иван"}
+current = await state.get_state()  # "MyState:waiting_name"
+await state.set_state(None)      # сброс
 ```
 
-### Использование
-
+**StateGuard** — блокирует команды во время активного FSM состояния:
 ```python
-@router.message_created(Command("register"))
-async def cmd_register(event, state):
-    await state.set_state(Registration.name)
-    await event.answer("Введите имя:")
-
-@router.message_created(Registration.name)
-async def process_name(event, state):
-    await state.update_data(name=event.message.body.text)
-    await state.set_state(Registration.email)
-    await event.answer("Введите email:")
-
-@router.message_created(Registration.email)
-async def process_email(event, state):
-    data = await state.get_data()
-    await event.answer(f"Зарегистрирован: {data['name']}")
-    await state.set_state(None)  # Сброс состояния
+dp = Dispatcher(
+    state_guard_commands={'/cancel', '/start'},
+    state_guard_callbacks={'action:cancel'},
+    state_guard_hint_func=lambda s: "имя пользователя",
+)
 ```
-
-### Методы StateContext
-
-- `get_state()` — получить текущее состояние
-- `set_state(state)` — установить состояние
-- `get_data()` — получить данные
-- `update_data(**kwargs)` — обновить данные
-- `clear()` — очистить данные
 
 ---
 
 ## Middleware
 
-### Создание
-
 ```python
-from aioscam.middleware import BaseMiddleware
+async def logging_middleware(event, handler):
+    print(f"In: {event.text}")
+    result = await handler(event)
+    print(f"Done")
+    return result
 
-class LoggingMiddleware(BaseMiddleware):
-    async def on_message(self, event, handler):
-        print(f"Получено: {event.message.body.text}")
-        return await handler(event)
-```
-
-### Регистрация
-
-```python
-router.message.middleware(LoggingMiddleware())
+router.middleware()(logging_middleware)
 ```
 
 ---
 
 ## Клавиатуры
 
-### KeyboardBuilder
-
 ```python
-from aioscam.utils import KeyboardBuilder
+from aioscam.utils.keyboard import KeyboardBuilder
 
 builder = KeyboardBuilder(inline=True)
 
-# Callback кнопка
-builder.callback("Кнопка 1", "action:one")
+builder.callback("Кнопка", "action:click")
+builder.link("Сайт", "https://example.com")
+builder.request_contact("📱 Телефон")
+builder.request_location("📍 Геолокация")
+builder.clipboard("Копировать", "текст для копирования")
+builder.row()  # новая строка
 
-# Ссылка
-builder.link("Открыть сайт", "https://example.com")
-
-# Новый ряд
-builder.row()
-
-# Запрос контакта
-builder.request_contact("📱 Поделиться контактом")
-
-# Запрос геолокации
-builder.request_location("📍 Поделиться местоположением")
-
-# Отправка
-await event.answer("Выберите:", keyboard=builder.build().to_dict())
+keyboard = builder.build().to_dict()
+await event.answer("Выберите:", keyboard=keyboard)
 ```
 
-### Типы кнопок
+**Типы кнопок:** `callback`, `link`, `chat`, `message` (switch), `clipboard`, `open_app`, `request_contact`, `request_geo_location`
 
-| Тип | Описание |
-|-----|----------|
-| `callback` | Callback-кнопка |
-| `link` | Ссылка |
-| `chat` | Переход в чат |
-| `message` | Переход к сообщению |
-| `clipboard` | Копирование в буфер |
-| `open_app` | Открыть приложение |
-| `request_contact` | Запрос контакта |
-| `request_geo_location` | Запрос геолокации |
-| `attachment` | Вложение |
+---
+
+## Deep links
+
+```python
+from aioscam.utils.deep_linking import create_deep_link, parse_deep_link
+
+link = create_deep_link("mybot", "ref_123")
+# → "https://max.ru/mybot?start=ref_123"
+
+info = parse_deep_link(link)
+# → {"bot_username": "mybot", "start": "ref_123"}
+```
+
+**Обработка первого входа:**
+```python
+@router.bot_started(StartCommand())
+async def on_deeplink(event, start_payload: str = None):
+    print(f"Payload: {start_payload}")
+    print(f"event.payload: {event.payload}")  # то же самое
+```
+
+**Повторный вход** — Max присылает `message_created` с текстом `/start <payload>`:
+```python
+@router.message_created(StartCommand())
+async def on_repeat_deeplink(event, start_payload: str = None):
+    print(f"Repeat visit with payload: {start_payload}")
+```
+
+---
+
+## I18n
+
+```python
+from aioscam import I18n
+
+i18n = I18n(path="locales/", default_locale="ru")
+
+@router.message_created(Command("start"))
+async def cmd_start(event):
+    locale = event.locale or "ru"
+    text = i18n.get("welcome", locale=locale)
+    await event.answer(text)
+```
+
+Файл `locales/ru.json`:
+```json
+{
+  "welcome": "Добро пожаловать!",
+  "help": "Справка"
+}
+```
+
+---
+
+## Rate Limiter
+
+```python
+from aioscam import Bot
+from aioscam.limiter import RateLimitConfig
+
+bot = Bot(rate_limit=RateLimitConfig(
+    rate=10.0,      # запросов в секунду
+    burst=20,       # максимальный burst
+    max_retries=3,  # попыток при 429
+    backoff_base=1.0,
+))
+
+# Пресеты:
+bot = Bot(rate_limit=RateLimitConfig.strict())   # 5 req/s
+bot = Bot(rate_limit=RateLimitConfig.relaxed())  # 30 req/s
+```
 
 ---
 
 ## Webhook
 
-### aiohttp
-
 ```python
-from aiohttp import web
-from aioscam import Bot, Dispatcher, Router
-
-dp = Dispatcher()
-router = Router()
-dp.include_router(router)
-
-async def webhook_handler(request):
-    dp: Dispatcher = request.app['dp']
-    bot: Bot = request.app['bot']
-    return await dp.handle_webhook_request(bot, request)
-
-async def on_startup(app):
-    app['bot'] = Bot()
-    app['dp'] = dp
-
-app = web.Application()
-app.router.add_post('/webhook', webhook_handler)
-app.on_startup.append(on_startup)
-
-web.run_app(app, host='0.0.0.0', port=8080)
+await dp.handle_webhook(
+    bot=bot,
+    host="0.0.0.0",
+    port=8080,
+    path="/webhook",
+    secret_token="your_secret",
+)
 ```
 
 ---
 
 ## Конфигурация
 
-### Переменные окружения
-
 | Переменная | Обязательно | Описание |
 |------------|-------------|----------|
-| `MAX_BOT_TOKEN` | ✅ | Токен бота из Max Bot API |
-| `AIOSCAM_ENV` | ❌ | Окружение: `debug`, `test`, `prod` (по умолчанию: `prod`) |
-| `MAX_BASE_URL` | ❌ | URL API (по умолчанию: `https://platform-api.max.ru`) |
-
-### Использование
+| `MAX_BOT_TOKEN` | ✅ | Токен бота |
+| `AIOSCAM_ENV` | ❌ | `debug` / `test` / `prod` (умолч. `prod`) |
 
 ```python
 from aioscam.config import get_config
-
 config = get_config()
-print(config.token)
-print(config.env)  # debug, test, prod
+print(config.token, config.env)
 ```
-
-### Режимы
-
-- `debug` — подробное логирование
-- `test` — минимальное логирование
-- `prod` — production режим

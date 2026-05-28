@@ -2,7 +2,7 @@
 AioScam - Async framework for Max messenger bots (aiogram-style)
 """
 
-__version__ = "0.1.6.4"
+__version__ = "0.1.7"
 __author__ = "AioScam Contributors"
 
 from aioscam.bot import Bot
