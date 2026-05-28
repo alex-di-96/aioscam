@@ -2,6 +2,15 @@
 
 ## v0.1.7 — Current (2026-05-28)
 
+### Async integrity + Webhook fixes (коммит da9e787)
+✅ **I18n** — убран блокирующий `open()` в `__init__`, добавлен `async def reload()` через `aiofiles`
+✅ **I18n `lazy=True`** — пропуск синхронной загрузки при создании внутри event loop
+✅ **`AiohttpWebhookHandler`** — добавлена валидация `X-Max-Secret-Token` (было полностью отсутствовала)
+✅ **`Dispatcher.handle_webhook()`** — `shutdown_event` заменён на `SIGINT`/`SIGTERM` signal handlers (раньше зависал навечно)
+✅ **`Dispatcher.stop_webhook()`** — программная остановка webhook-сервера
+✅ **`examples/webhook_bot.py`** — `WEBHOOK_SECRET` из env, signal shutdown, убран `while True: sleep(3600)`
+> Ролбэк: `git checkout pre-async-fixes` | Подробности: `docs/FIXES_ASYNC_2026-05-28.md`
+
 ### Media upload / download
 ✅ `InputMedia(path)` — авто-определение типа по расширению (image/video/audio/file)
 ✅ `InputMediaBuffer(buffer, filename)` — загрузка из памяти без temp-файла
