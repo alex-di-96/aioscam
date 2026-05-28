@@ -11,8 +11,7 @@ Demonstrates internationalization support:
 Locales directory structure:
     locales/
     ├── en.json
-    ├── ru.json
-    └── uk.json
+    └── ru.json
 
 Each file is a flat dict: {"key": "translated text"}
 """
@@ -58,10 +57,8 @@ async def cmd_help(event):
 async def cmd_lang(event):
     """Show language selection keyboard"""
     builder = KeyboardBuilder(inline=True)
-    builder.callback("🇬🇧 English", "lang:en")
+    builder.callback("🇺🇸 English", "lang:en")
     builder.callback("🇷🇺 Русский", "lang:ru")
-    builder.row()
-    builder.callback("🇺🇦 Українська", "lang:uk")
 
     await event.answer(
         i18n(event, "select_language"),

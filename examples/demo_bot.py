@@ -549,8 +549,8 @@ def _settings_keyboard(current_locale: str = "ru") -> KeyboardBuilder:
     builder = KeyboardBuilder(inline=True)
     # 🇷🇺 Русский — switch session locale to Russian
     ru_label = "🇷🇺 Русский ✅" if current_locale == "ru" else "🇷🇺 Русский"
-    # 🇬🇧 English — switch session locale to English (UK flag)
-    en_label = "🇬🇧 English ✅" if current_locale == "en" else "🇬🇧 English"
+    # 🇺🇸 English — switch session locale to English (US flag)
+    en_label = "🇺🇸 English ✅" if current_locale == "en" else "🇺🇸 English"
     builder.callback(ru_label, "lang:ru")
     builder.callback(en_label, "lang:en")
     builder.row()
@@ -1127,7 +1127,7 @@ async def handle_callback(event):
                 message="⚙️ **Настройки**\n\n"
                         "Выберите язык интерфейса:\n"
                         "🇷🇺 Русский — по умолчанию\n"
-                        "🇬🇧 English",
+                        "🇺🇸 English",
                 keyboard=kb.to_dict(),
             )
 
