@@ -15,8 +15,9 @@
 ✅ send_callback — SDK-aligned (botapi.max.ru, JSON, NewMessageBody)
 ✅ Type dedup — single source truth for User/Message/MessageBody
 ✅ EventContext — `user_id`, `chat_id` convenience properties
-✅ 141/141 tests passing (+41 new)
-✅ 12 example bots (3 new)
+✅ 158/158 tests passing (+58 new)
+✅ 13 example bots (4 new)
+✅ **I18n** — JSON-based translations, auto locale detection from `user_locale`
 
 ## Planned
 
@@ -38,7 +39,6 @@
 ### Future
 
 - [ ] Plugin system for custom middleware
-- [ ] i18n support (localization)
 - [ ] Media download helpers
 - [ ] Sticker/animation support
 - [ ] Admin panel integration

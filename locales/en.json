@@ -1,0 +1,11 @@
+{
+    "greeting": "👋 Hello! I'm a multilingual bot.",
+    "help": "📖 Available commands:\n/start - Start the bot\n/help - Show this help\n/lang - Change language",
+    "echo": "🔁 {text}",
+    "lang_changed": "🌐 Language changed to English",
+    "select_language": "🌐 Select your language:",
+    "unknown_command": "❓ Unknown command. Use /help for available commands.",
+    "welcome": "Welcome, {name}!",
+    "one_item": "1 item",
+    "many_items": "{count} items"
+}

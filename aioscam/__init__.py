@@ -11,6 +11,7 @@ from aioscam.filters import Command, StartCommand, F, StateFilter
 from aioscam.types.command import BotCommand
 from aioscam.config import Config, get_config, EnvMode
 from aioscam.methods import BaseMethod, SendMessage, GetMe, GetUpdates
+from aioscam.i18n import I18n
 
 __all__ = [
     "Bot",
@@ -28,4 +29,5 @@ __all__ = [
     "SendMessage",
     "GetMe",
     "GetUpdates",
+    "I18n",
 ]

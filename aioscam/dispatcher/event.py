@@ -135,6 +135,23 @@ class EventContext:
         return None
 
     @property
+    def locale(self) -> Optional[str]:
+        """
+        Get user locale from event (IETF BCP 47, e.g. "ru", "en")
+
+        Priority:
+        1. data['locale'] (manually set via i18n or FSM)
+        2. event.user_locale (from Max API update)
+        """
+        # Check if locale was manually set (e.g., via language selection)
+        if self.data.get('locale'):
+            return self.data['locale']
+        # Get from Max API update
+        if hasattr(self.event, 'user_locale'):
+            return self.event.user_locale
+        return None
+
+    @property
     def callback(self) -> Optional[Any]:
         """Get callback data from event"""
         if hasattr(self.event, 'callback'):
