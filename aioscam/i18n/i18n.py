@@ -4,9 +4,10 @@ I18n storage and translation engine
 
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+import aiofiles
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +28,23 @@ class I18n:
     Each file is a flat dict: {"key": "translated text"}
 
     Usage:
+        # Create at module level (sync load — safe before event loop starts)
         i18n = I18n(path="locales", default_locale="en")
+
+        # OR: create without loading, then init async inside main()
+        i18n = I18n(path="locales", default_locale="en", lazy=True)
+        async def main():
+            await i18n.reload()   # async load with aiofiles
+            await dp.start_polling(bot)
 
         # In handler:
         @router.message_created(Command("start"))
         async def cmd_start(event, state):
             text = i18n.gettext(event, "greeting")
-            # or: text = i18n(event, "greeting")
             await event.answer(text)
+
+        # Hot-reload translations without restarting:
+        await i18n.reload()
 
         # With pluralization:
         text = i18n.ngettext(event, "one_item", "many_items", count=5)
@@ -48,46 +58,88 @@ class I18n:
         path: str,
         default_locale: str = "en",
         domain: str = "messages",
+        lazy: bool = False,
     ):
         """
-        Initialize I18n
+        Initialize I18n.
 
         Args:
             path: Path to locales directory
             default_locale: Default locale if user locale not found
             domain: Translation domain (filename without .json)
+            lazy: If True, skip loading in __init__ — call await i18n.reload() manually.
+                  Use lazy=True when creating I18n inside an already-running event loop.
         """
         self.path = Path(path)
         self.default_locale = default_locale
         self.domain = domain
         self._translations: Dict[str, Dict[str, str]] = {}
-        self._load_translations()
 
-    def _load_translations(self) -> None:
-        """Load all translation files from the locales directory"""
+        if not lazy:
+            # Sync load — safe when called at module level before event loop starts.
+            # If the event loop is already running, use lazy=True and await reload().
+            self._load_translations_sync()
+
+    def _load_translations_sync(self) -> None:
+        """
+        Sync load of all translation files.
+
+        Called from __init__ before the event loop starts.
+        For runtime reload (hot-reload), use the async reload() method instead.
+        """
         if not self.path.exists():
             logger.warning(f"Locales directory not found: {self.path}")
             return
 
-        for file in self.path.glob(f"{self.domain}_*.json"):
-            locale = file.stem.replace(f"{self.domain}_", "")
+        files = list(self.path.glob(f"{self.domain}_*.json"))
+        if not files:
+            # Try without domain prefix: en.json, ru.json, etc.
+            files = list(self.path.glob("*.json"))
+
+        for file in files:
+            stem = file.stem
+            locale = stem.replace(f"{self.domain}_", "") if stem.startswith(f"{self.domain}_") else stem
             try:
-                with open(file, "r", encoding="utf-8") as f:
-                    self._translations[locale] = json.load(f)
+                self._translations[locale] = json.loads(file.read_text(encoding="utf-8"))
                 logger.info(f"Loaded locale '{locale}': {len(self._translations[locale])} keys")
             except Exception as e:
                 logger.error(f"Failed to load locale '{locale}': {e}")
 
-        # Also try loading without domain prefix (e.g., "en.json")
-        if not self._translations:
-            for file in self.path.glob("*.json"):
-                locale = file.stem
-                try:
-                    with open(file, "r", encoding="utf-8") as f:
-                        self._translations[locale] = json.load(f)
-                    logger.info(f"Loaded locale '{locale}': {len(self._translations[locale])} keys")
-                except Exception as e:
-                    logger.error(f"Failed to load locale '{locale}': {e}")
+    async def reload(self) -> None:
+        """
+        Async reload of all translation files using aiofiles.
+
+        Use this:
+        - Inside an already-running event loop (lazy=True init)
+        - For hot-reload without restarting the bot
+
+        Example:
+            i18n = I18n(path="locales", default_locale="ru", lazy=True)
+            async def main():
+                await i18n.reload()
+                await dp.start_polling(bot)
+        """
+        if not self.path.exists():
+            logger.warning(f"Locales directory not found: {self.path}")
+            return
+
+        files = list(self.path.glob(f"{self.domain}_*.json"))
+        if not files:
+            files = list(self.path.glob("*.json"))
+
+        new_translations: Dict[str, Dict[str, str]] = {}
+        for file in files:
+            stem = file.stem
+            locale = stem.replace(f"{self.domain}_", "") if stem.startswith(f"{self.domain}_") else stem
+            try:
+                async with aiofiles.open(file, "r", encoding="utf-8") as f:
+                    content = await f.read()
+                new_translations[locale] = json.loads(content)
+                logger.info(f"Reloaded locale '{locale}': {len(new_translations[locale])} keys")
+            except Exception as e:
+                logger.error(f"Failed to reload locale '{locale}': {e}")
+
+        self._translations = new_translations
 
     def get_locale(self, event: Any) -> str:
         """

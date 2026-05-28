@@ -51,6 +51,7 @@ class Dispatcher(Router):
         self._polling_offset: Optional[int] = None
         self._lock = asyncio.Lock()
         self._webhook_secret: Optional[str] = None
+        self._webhook_stop_event: Optional[asyncio.Event] = None
 
         # StateGuard configuration (customizable)
         self._guard_allowed_commands = state_guard_commands or {'/cancel', '/start'}
@@ -312,6 +313,16 @@ class Dispatcher(Router):
         """Stop polling"""
         self._running = False
 
+    def stop_webhook(self) -> None:
+        """
+        Programmatically stop the webhook server started by handle_webhook().
+
+        Example:
+            asyncio.get_event_loop().call_later(60, dp.stop_webhook)
+        """
+        if hasattr(self, "_webhook_stop_event") and self._webhook_stop_event:
+            self._webhook_stop_event.set()
+
     async def _process_update(self, bot: Bot, update: Update) -> None:
         """
         Process single update
@@ -362,32 +373,37 @@ class Dispatcher(Router):
         secret_token: Optional[str] = None,
     ) -> None:
         """
-        Start webhook server (aiohttp)
-        
+        Start webhook server (aiohttp).
+
+        Runs until SIGINT (Ctrl+C) or SIGTERM (systemd stop).
+        Can also be stopped programmatically via stop_webhook().
+
         Args:
             bot: Bot instance
             host: Server host
             port: Server port
             path: Webhook path
-            secret_token: Secret token for webhook validation
+            secret_token: Secret token — validated via X-Max-Secret-Token header
         """
+        import signal
         from aiohttp import web
-        
+
         self._webhook_secret = secret_token
+        self._webhook_stop_event = asyncio.Event()
         app = web.Application()
-        
+
         async def webhook_handler(request):
+            # Validate secret token if provided
+            if self._webhook_secret:
+                incoming = request.headers.get("X-Max-Secret-Token", "")
+                if incoming != self._webhook_secret:
+                    logger.warning(
+                        f"Webhook rejected: invalid X-Max-Secret-Token (from {request.remote})"
+                    )
+                    return web.json_response(
+                        {"ok": False, "error": "Unauthorized"}, status=401
+                    )
             try:
-                # Validate secret token if provided
-                if self._webhook_secret:
-                    request_token = request.headers.get("X-Max-Secret-Token")
-                    if not request_token or request_token != self._webhook_secret:
-                        logger.warning("Unauthorized webhook request")
-                        return web.json_response(
-                            {"ok": False, "error": "Unauthorized"},
-                            status=401
-                        )
-                
                 data = await request.json()
                 update = Update(**data)
                 await self._process_update(bot, update)
@@ -395,25 +411,38 @@ class Dispatcher(Router):
             except Exception as e:
                 logger.error(f"Webhook error: {e}")
                 return web.json_response({"ok": False, "error": "Internal error"}, status=500)
-        
+
         app.router.add_post(path, webhook_handler)
-        
+
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, host, port)
-        
-        logger.info(f"Starting webhook on {host}:{port}{path}")
-        
-        shutdown_event = asyncio.Event()
-        
+
+        loop = asyncio.get_running_loop()
+
+        def _signal_handler():
+            logger.info("Shutdown signal received, stopping webhook...")
+            self._webhook_stop_event.set()
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, _signal_handler)
+            except (NotImplementedError, RuntimeError):
+                # Windows doesn't support add_signal_handler
+                pass
+
         try:
             await site.start()
-            # Wait for shutdown signal
-            await shutdown_event.wait()
-        except KeyboardInterrupt:
-            logger.info("Webhook server stopped")
+            logger.info(f"Webhook running on http://{host}:{port}{path}")
+            await self._webhook_stop_event.wait()
         finally:
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                try:
+                    loop.remove_signal_handler(sig)
+                except (NotImplementedError, RuntimeError):
+                    pass
             await runner.cleanup()
+            logger.info("Webhook server stopped")
     
     async def shutdown(self) -> None:
         """Shutdown dispatcher and close resources"""
