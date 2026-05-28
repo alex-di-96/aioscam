@@ -139,6 +139,7 @@ class Bot:
         reply_to_mid: Optional[str] = None,
         keyboard: Optional[Dict[str, Any]] = None,
         format: Optional[str] = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
         **kwargs,
     ) -> Dict[str, Any]:
         """
@@ -151,13 +152,14 @@ class Bot:
             reply_to_mid: Message ID to reply to
             keyboard: Inline keyboard (will be added to attachments)
             format: Text format — "markdown" or "html" (per official SDK)
+            attachments: Extra attachment dicts (e.g. from process_input_media)
             **kwargs: Additional parameters
 
         Returns:
             Sent message data
         """
-        # Use method object when no extra kwargs
-        if not kwargs:
+        # Use method object when no extra kwargs and no attachments
+        if not kwargs and not attachments:
             return await self.execute(SendMessage(
                 chat_id=int(chat_id) if chat_id is not None else None,
                 text=text,
@@ -192,6 +194,9 @@ class Bot:
 
         if reply_to_mid:
             body["link"] = {"mid": reply_to_mid, "type": "reply"}
+
+        if attachments:
+            body["attachments"].extend(attachments)
 
         for key, value in kwargs.items():
             if key == "attachments":
@@ -1147,52 +1152,248 @@ class Bot:
     
     # ==================== Media ====================
 
-    async def get_upload_url(self) -> str:
+    async def get_upload_url(self, upload_type) -> Dict[str, Any]:
         """
-        Get URL for file upload
-
-        Returns:
-            Upload URL
-        """
-        response = await self._client.request(
-            ApiPath.GET_UPLOAD_URL.value,
-            method=HttpMethod.GET,
-        )
-        return response.result.get("url", "")
-
-    async def upload_attachment(
-        self,
-        upload_type: str,
-        file: Any,
-    ) -> Dict[str, Any]:
-        """
-        Upload attachment file
+        Get upload URL for a given media type.
 
         Args:
-            upload_type: Upload type (e.g. 'photo', 'document', 'video')
-            file: File object or path to upload
+            upload_type: UploadType enum or string ("image", "video", "audio", "file")
 
         Returns:
-            Upload result with file info
+            {"url": str, "token": str | None}
         """
+        type_value = upload_type.value if hasattr(upload_type, "value") else str(upload_type)
         response = await self._client.request(
             ApiPath.GET_UPLOAD_URL.value,
-            body={
-                "upload_type": upload_type,
-                "file": file,
-            },
+            method=HttpMethod.POST,
+            params={"type": type_value},
         )
-        return response.result
+        return response.result or {}
+
+    async def download_file(self, path: str, url: str, token: str) -> int:
+        """
+        Download a media file from Max servers.
+
+        Args:
+            path: Local path to save the file
+            url: Media URL (from attachment payload.url)
+            token: Access token (from attachment payload.token)
+
+        Returns:
+            HTTP status code (200 = success)
+        """
+        return await self._client.download_file(path, url, token)
+
+    async def _send_with_media(
+        self,
+        attachment_dict: Dict[str, Any],
+        chat_id=None,
+        user_id=None,
+        text: str = "",
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Send a message with a pre-uploaded attachment dict.
+        Handles attachment.not.ready retry (up to 5 attempts, 2s delay).
+        """
+        import asyncio
+        from aioscam.exceptions import ApiError
+
+        await asyncio.sleep(2)  # give Max servers time to process
+
+        last_exc = None
+        for attempt in range(5):
+            try:
+                return await self.send_message(
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    text=text,
+                    attachments=[attachment_dict],
+                    **kwargs,
+                )
+            except (ApiError, Exception) as e:
+                last_exc = e
+                if "not.ready" in str(e).lower() or "attachment" in str(e).lower():
+                    if attempt < 4:
+                        await asyncio.sleep(2)
+                        continue
+                raise
+        raise last_exc
+
+    async def send_photo(
+        self,
+        chat_id=None,
+        user_id=None,
+        photo=None,
+        caption: str = "",
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Upload and send an image.
+
+        Args:
+            chat_id: Chat ID
+            user_id: User ID (for private)
+            photo: Path string, bytes, InputMedia, or InputMediaBuffer
+            caption: Optional text caption
+
+        Returns:
+            Sent message data
+        """
+        from aioscam.types.attachment import InputMedia, InputMediaBuffer, UploadType
+        from aioscam.utils.media import process_input_media
+
+        if isinstance(photo, str):
+            media = InputMedia(photo, UploadType.IMAGE)
+        elif isinstance(photo, bytes):
+            media = InputMediaBuffer(photo, "photo.jpg", UploadType.IMAGE)
+        else:
+            media = photo
+
+        att = await process_input_media(self, media)
+        return await self._send_with_media(att, chat_id=chat_id, user_id=user_id, text=caption, **kwargs)
+
+    async def send_document(
+        self,
+        chat_id=None,
+        user_id=None,
+        document=None,
+        caption: str = "",
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Upload and send a file/document.
+
+        Args:
+            chat_id: Chat ID
+            user_id: User ID (for private)
+            document: Path string, bytes, InputMedia, or InputMediaBuffer
+            caption: Optional text caption
+
+        Returns:
+            Sent message data
+        """
+        from aioscam.types.attachment import InputMedia, InputMediaBuffer, UploadType
+        from aioscam.utils.media import process_input_media
+
+        if isinstance(document, str):
+            media = InputMedia(document, UploadType.FILE)
+        elif isinstance(document, bytes):
+            media = InputMediaBuffer(document, "document.bin", UploadType.FILE)
+        else:
+            media = document
+
+        att = await process_input_media(self, media)
+        return await self._send_with_media(att, chat_id=chat_id, user_id=user_id, text=caption, **kwargs)
+
+    async def send_audio(
+        self,
+        chat_id=None,
+        user_id=None,
+        audio=None,
+        caption: str = "",
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Upload and send an audio file.
+
+        Args:
+            chat_id: Chat ID
+            user_id: User ID (for private)
+            audio: Path string, bytes, InputMedia, or InputMediaBuffer
+            caption: Optional text caption
+
+        Returns:
+            Sent message data
+        """
+        from aioscam.types.attachment import InputMedia, InputMediaBuffer, UploadType
+        from aioscam.utils.media import process_input_media
+
+        if isinstance(audio, str):
+            media = InputMedia(audio, UploadType.AUDIO)
+        elif isinstance(audio, bytes):
+            media = InputMediaBuffer(audio, "audio.mp3", UploadType.AUDIO)
+        else:
+            media = audio
+
+        att = await process_input_media(self, media)
+        return await self._send_with_media(att, chat_id=chat_id, user_id=user_id, text=caption, **kwargs)
+
+    async def send_video(
+        self,
+        chat_id=None,
+        user_id=None,
+        video=None,
+        caption: str = "",
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Upload and send a video file.
+
+        Args:
+            chat_id: Chat ID
+            user_id: User ID (for private)
+            video: Path string, bytes, InputMedia, or InputMediaBuffer
+            caption: Optional text caption
+
+        Returns:
+            Sent message data
+        """
+        from aioscam.types.attachment import InputMedia, InputMediaBuffer, UploadType
+        from aioscam.utils.media import process_input_media
+
+        if isinstance(video, str):
+            media = InputMedia(video, UploadType.VIDEO)
+        elif isinstance(video, bytes):
+            media = InputMediaBuffer(video, "video.mp4", UploadType.VIDEO)
+        else:
+            media = video
+
+        att = await process_input_media(self, media)
+        return await self._send_with_media(att, chat_id=chat_id, user_id=user_id, text=caption, **kwargs)
+
+    async def send_media(
+        self,
+        chat_id=None,
+        user_id=None,
+        media=None,
+        caption: str = "",
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Upload and send any media file — type is auto-detected.
+
+        Args:
+            chat_id: Chat ID
+            user_id: User ID (for private)
+            media: Path string, bytes, InputMedia, or InputMediaBuffer
+            caption: Optional text caption
+
+        Returns:
+            Sent message data
+        """
+        from aioscam.types.attachment import InputMedia, InputMediaBuffer
+        from aioscam.utils.media import process_input_media
+
+        if isinstance(media, str):
+            media_obj = InputMedia(media)
+        elif isinstance(media, bytes):
+            media_obj = InputMediaBuffer(media, "media")
+        else:
+            media_obj = media
+
+        att = await process_input_media(self, media_obj)
+        return await self._send_with_media(att, chat_id=chat_id, user_id=user_id, text=caption, **kwargs)
 
     async def get_video(self, video_token: str) -> Dict[str, Any]:
         """
-        Get video file info
+        Get video file info by token.
 
         Args:
             video_token: Video token
 
         Returns:
-            Video file data
+            Video data with URLs for different resolutions
         """
         response = await self._client.request(
             ApiPath.GET_VIDEO.value,

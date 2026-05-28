@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aioscam"
-version = "0.1.6.2"
+version = "0.1.6.4"
 description = "Async framework for Max messenger bots (aiogram-style)"
 readme = "README.md"
 license = {text = "MIT"}
@@ -28,6 +28,7 @@ classifiers = [
 ]
 dependencies = [
     "aiohttp>=3.9.0",
+    "aiofiles>=23.0.0",
     "magic-filter>=1.0.0",
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",

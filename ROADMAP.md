@@ -1,6 +1,20 @@
 # AioScam Roadmap
 
-## v0.1.6.3 — Current (2026-05-28)
+## v0.1.6.4 — Current (2026-05-28)
+
+✅ **Media upload/download support** (full Max API upload flow)
+- `InputMedia(path)` — auto-detects type by extension (image/video/audio/file)
+- `InputMediaBuffer(buffer, filename)` — upload from bytes
+- `bot.send_photo()`, `bot.send_video()`, `bot.send_audio()`, `bot.send_document()`, `bot.send_media()` — convenience methods
+- `bot.get_upload_url(type)` — fixed (was broken: wrong HTTP method, no type param)
+- `bot.download_file(path, url, token)` — download media from Max servers
+- `attachment.not.ready` retry logic (5 attempts, 2s delay)
+- Sticker — receive-only documented (API doesn't allow bot sending)
+- `UploadType` enum fixed: `IMAGE` (was `PHOTO`), `FILE` (was `DOCUMENT`)
+- New dependency: `aiofiles>=23.0.0`
+> Подробности: `docs/MEDIA_UPLOAD_2026-05-28.md`
+
+## v0.1.6.3 — (2026-05-28)
 
 ✅ `EventContext.payload` — диплинк-пэйлоад доступен в хендлерах (`event.payload`)
 ✅ `EventContext.answer()` — исправлен для `bot_started` событий (fallback на `user_id`/`chat_id`)

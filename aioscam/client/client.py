@@ -2,10 +2,14 @@
 HTTP Client for Max API
 """
 
+import json
 import logging
+import mimetypes
+import os
 from typing import Any, Dict, Optional
 
 import aiohttp
+import aiofiles
 
 from aioscam.client.request import RequestBuilder
 from aioscam.client.response import Response
@@ -257,6 +261,86 @@ class AioScamClient:
             raise RetryAfter(error_msg, retry_after=retry_after)
         else:
             raise ApiError(error_msg, code=response.code, response=response.result)
+
+    # ── File upload / download ──────────────────────────────────────────────
+
+    async def upload_file(self, url: str, path: str, upload_type: str) -> str:
+        """
+        Upload a local file via multipart POST to the URL from /uploads.
+
+        Args:
+            url: Upload endpoint URL (from get_upload_url)
+            path: Local file path
+            upload_type: UploadType value string ("image", "video", etc.)
+
+        Returns:
+            Raw response text (JSON string with token info)
+        """
+        basename = os.path.basename(path)
+        _, ext = os.path.splitext(basename)
+        # Build a reasonable content-type
+        mime, _ = mimetypes.guess_type(basename)
+        if not mime:
+            mime = f"{upload_type}/{ext.lstrip('.') or 'octet-stream'}"
+
+        async with aiofiles.open(path, "rb") as f:
+            file_data = await f.read()
+
+        form = aiohttp.FormData()
+        form.add_field("data", file_data, filename=basename, content_type=mime)
+
+        session = await self._get_session()
+        async with session.post(url, data=form) as resp:
+            return await resp.text()
+
+    async def upload_file_buffer(
+        self, url: str, buffer: bytes, filename: str, upload_type: str
+    ) -> str:
+        """
+        Upload an in-memory bytes buffer via multipart POST.
+
+        Args:
+            url: Upload endpoint URL (from get_upload_url)
+            buffer: File content as bytes
+            filename: Filename to send (used for content-type detection)
+            upload_type: UploadType value string
+
+        Returns:
+            Raw response text (JSON string with token info)
+        """
+        mime, _ = mimetypes.guess_type(filename)
+        if not mime:
+            _, ext = os.path.splitext(filename)
+            mime = f"{upload_type}/{ext.lstrip('.') or 'octet-stream'}"
+
+        form = aiohttp.FormData()
+        form.add_field("data", buffer, filename=filename, content_type=mime)
+
+        session = await self._get_session()
+        async with session.post(url, data=form) as resp:
+            return await resp.text()
+
+    async def download_file(self, path: str, url: str, token: str) -> int:
+        """
+        Download a media file using Bearer token auth.
+
+        Args:
+            path: Local path to save file
+            url: Media URL (from attachment payload)
+            token: Access token (from attachment payload)
+
+        Returns:
+            HTTP status code (200 = success)
+        """
+        headers = {"Authorization": f"Bearer {token}"}
+        session = await self._get_session()
+        async with session.get(url, headers=headers) as resp:
+            if resp.status == 200:
+                async with aiofiles.open(path, "wb") as f:
+                    await f.write(await resp.read())
+            return resp.status
+
+    # ── End file upload / download ──────────────────────────────────────────
 
     async def close(self) -> None:
         """Close HTTP session and rate limiter"""

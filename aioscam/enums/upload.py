@@ -6,10 +6,9 @@ from enum import Enum
 
 
 class UploadType(str, Enum):
-    """Types of file uploads"""
-    
-    PHOTO = "photo"
+    """Types of file uploads — values must match Max API `type` param"""
+
+    IMAGE = "image"
     VIDEO = "video"
     AUDIO = "audio"
-    DOCUMENT = "document"
-    STICKER = "sticker"
+    FILE = "file"
