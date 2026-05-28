@@ -326,6 +326,13 @@ class Dispatcher(Router):
             event_type = update.event_type
             event = update.event
 
+            # Log ALL incoming updates for debugging
+            logger.info(f"🔍 Update received: type={event_type}, has_event={event is not None}")
+            if hasattr(update, 'payload') and update.payload:
+                logger.info(f"  payload={update.payload}")
+            if hasattr(update, 'user_id') and update.user_id:
+                logger.info(f"  user_id={update.user_id}")
+
             if not event_type or not event:
                 logger.warning(f"Unknown update type: {update}")
                 return

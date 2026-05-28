@@ -38,6 +38,90 @@ from aioscam.fsm import State, StatesGroup
 from aioscam.utils.keyboard import KeyboardBuilder
 from aioscam.utils.deep_linking import create_deep_link
 
+# ==================== Deep Link Obfuscation (demo bot only) ====================
+# Random shift + hash for secure invite links — NOT part of the framework!
+
+import hashlib
+import base64
+import random
+import time
+
+# Session key — generated at bot start, links expire when bot restarts
+_DEEP_LINK_SESSION_KEY = random.randint(1, 255)
+_DEEP_LINK_SESSION_START = time.time()
+_DEEP_LINK_MAX_AGE = 3600  # 1 hour
+
+
+def encode_invite_payload(full_name: str, chat_id: int = 0, shift: int = None) -> str:
+    """
+    Encode invite payload with random shift + hash (demo bot only)
+    Returns obfuscated string like "aGVsbG8_42_abc1"
+    """
+    if shift is None:
+        shift = _DEEP_LINK_SESSION_KEY
+
+    # Create hash for integrity check
+    hash_input = f"{full_name}:{chat_id}:{shift}"
+    short_hash = hashlib.md5(hash_input.encode()).hexdigest()[:4]
+
+    # Combine data with separator that won't appear in names
+    data = f"{full_name}:::{chat_id}"
+
+    # Caesar cipher with shift
+    encoded_chars = []
+    for ch in data:
+        encoded_chars.append(chr(ord(ch) + shift))
+
+    encoded = base64.urlsafe_b64encode("".join(encoded_chars).encode()).decode().rstrip("=")
+    return f"{encoded}_{shift}_{short_hash}"
+
+
+def decode_invite_payload(obfuscated: str) -> dict:
+    """
+    Decode invite payload. Returns {"full_name": str, "chat_id": int, "valid": bool, "reason": str}
+    """
+    try:
+        parts = obfuscated.rsplit("_", 2)
+        if len(parts) != 3:
+            return {"full_name": None, "chat_id": 0, "valid": False, "reason": "invalid_format"}
+
+        encoded, shift_str, short_hash = parts
+        shift = int(shift_str)
+
+        # Decode base64
+        padding = 4 - len(encoded) % 4
+        encoded += "=" * padding
+        decoded_str = base64.urlsafe_b64decode(encoded).decode()
+
+        # Reverse Caesar cipher
+        decoded_data = "".join(chr(ord(ch) - shift) for ch in decoded_str)
+
+        # Split data
+        if ":::" not in decoded_data:
+            return {"full_name": None, "chat_id": 0, "valid": False, "reason": "invalid_format"}
+
+        full_name, chat_id_str = decoded_data.split(":::", 1)
+        chat_id = int(chat_id_str) if chat_id_str.isdigit() else 0
+
+        # Verify hash
+        hash_input = f"{full_name}:{chat_id}:{shift}"
+        expected_hash = hashlib.md5(hash_input.encode()).hexdigest()[:4]
+
+        if expected_hash != short_hash:
+            return {"full_name": None, "chat_id": 0, "valid": False, "reason": "tampered"}
+
+        # Check session expiry
+        if time.time() - _DEEP_LINK_SESSION_START > _DEEP_LINK_MAX_AGE:
+            return {"full_name": None, "chat_id": 0, "valid": False, "reason": "expired"}
+
+        if shift != _DEEP_LINK_SESSION_KEY:
+            return {"full_name": None, "chat_id": 0, "valid": False, "reason": "expired_session"}
+
+        return {"full_name": full_name, "chat_id": chat_id, "valid": True, "reason": None}
+
+    except Exception:
+        return {"full_name": None, "chat_id": 0, "valid": False, "reason": "decode_error"}
+
 # ==================== SQLAlchemy async (User tracking) ====================
 # This is an EXAMPLE for developers — shows how to use async SQLAlchemy with AioScam.
 # NOT part of the framework itself.
@@ -516,29 +600,36 @@ async def cmd_delete(event):
 # ==================== Deep Link Handlers ====================
 
 async def _handle_invite(event):
-    """Generate personal invite deep link"""
-    user_id = None
-    if hasattr(event, 'user_id') and event.user_id:
-        user_id = event.user_id
-    elif hasattr(event, 'from_user') and event.from_user:
-        from_user = event.from_user
-        if hasattr(from_user, 'id'):
-            user_id = from_user.id
-        elif isinstance(from_user, dict):
-            user_id = from_user.get('id')
+    """Generate personal invite deep link — obfuscated, no user_id exposed"""
+    # Get user's full name and chat_id (NOT user_id — security!)
+    full_name = ""
+    chat_id = event.chat_id or 0
 
-    if not user_id:
-        await event.answer("⚠️ Не удалось определить ваш ID")
-        return
+    if hasattr(event, 'from_user') and event.from_user:
+        user = event.from_user
+        if hasattr(user, 'full_name') and user.full_name:
+            full_name = user.full_name
+        else:
+            fn = getattr(user, 'first_name', '') or ''
+            ln = getattr(user, 'last_name', '') or ''
+            full_name = f"{fn} {ln}".strip() or "Пользователь"
 
-    bot_username = event.bot.username or "my_bot"
-    invite_link = create_deep_link(bot_username, f"ref_{user_id}")
+    if not full_name:
+        full_name = "Пользователь"
+
+    # Get bot username from Bot.get_me() — NO HARDCODE
+    bot_me = await event.bot.get_me()
+    bot_username = bot_me.get('username', 'my_bot')
+
+    # Encode payload with obfuscation (demo bot only)
+    obfuscated = encode_invite_payload(full_name, chat_id)
+    invite_link = create_deep_link(bot_username, obfuscated)
 
     await event.answer(
         f"📬 **Ваша персональная ссылка:**\n\n"
         f"`{invite_link}`\n\n"
         f"Поделитесь ей с друзьями! Когда они перейдут по ссылке,\n"
-        f"бот узнает что их пригласили именно вы (ID: {user_id})"
+        f"бот узнает что их пригласили именно вы."
     )
 
 
@@ -594,27 +685,46 @@ async def on_bot_started(event, state):
 
     if event.payload:
         # Deep link: user came via https://max.ru/<bot>?start=<payload>
-        payload = event.payload
+        decoded = decode_invite_payload(event.payload)
 
-        referrer_id = None
-        if payload.startswith("ref_"):
-            referrer_id = payload[4:]
+        if decoded["valid"]:
+            inviter_name = decoded["full_name"]
+            inviter_chat_id = decoded["chat_id"]
 
-        if referrer_id:
+            # Message for the new user
             text = (
                 f"🎉 **Добро пожаловать!**\n\n"
-                f"Вас пригласил пользователь с ID: **{referrer_id}**\n\n"
+                f"Вас пригласил(а) **{inviter_name}**\n\n"
                 f"Теперь вы тоже можете пригласить друзей!\n"
                 f"Нажмите кнопку **🔗 Пригласить друга** в главном меню."
             )
-        else:
-            text = (
-                f"🔗 **Вы перешли по специальной ссылке!**\n\n"
-                f"Код: `{payload}`\n\n"
-                f"Нажмите **🔗 Пригласить друга** чтобы создать свою ссылку."
-            )
+            await event.answer(text)
 
-        await event.answer(text)
+            # Send notification to inviter (if chat_id is available)
+            if inviter_chat_id:
+                bot_me = await event.bot.get_me()
+                bot_username = bot_me.get('username', 'my_bot')
+                new_user_name = f"{first_name} {last_name}".strip() or "Новый пользователь"
+                await event.bot.send_message(
+                    chat_id=inviter_chat_id,
+                    user_id=user_id,  # use new user's ID for the message
+                    text=f"🔔 **{new_user_name}** перешёл(а) по вашей ссылке и начал(а) общение с ботом!",
+                )
+        else:
+            # Expired or invalid link
+            reason = decoded.get("reason", "unknown")
+            if reason in ("expired", "expired_session"):
+                text = (
+                    f"⏰ **Данная ссылка устарела.**\n\n"
+                    f"Но вы можете сами протестировать бота!\n"
+                    f"Нажмите **/start** для начала."
+                )
+            else:
+                text = (
+                    f"🔗 **Вы перешли по специальной ссылке!**\n\n"
+                    f"Нажмите **🔗 Пригласить друга** чтобы создать свою ссылку."
+                )
+            await event.answer(text)
     else:
         # Regular start — just show main menu
         await cmd_start(event, state)
@@ -894,12 +1004,92 @@ async def process_feedback_text(event, state):
 async def cmd_cancel(event, state):
     """Отменить текущую операцию"""
     current_state = await state.get_state()
-    
+
     if current_state:
         await state.set_state(None)
         await event.answer("❌ Операция отменена.\n\nИспользуйте /start для начала.")
     else:
         await event.answer("ℹ️ У вас нет активной операции.")
+
+
+# ==================== Catch-All Message Handler (Deep Link Debug) ====================
+
+@main_router.message_created()
+async def catch_all_message(event):
+    """
+    Catch-all handler — logs EVERY message with full update structure.
+    Must be LAST in the router — catches messages that didn't match any specific handler.
+    Used for debugging deep links and understanding what MAX sends.
+    """
+    # Get raw update data
+    raw_data = event.data.get('raw_update', {})
+
+    # Extract all possible fields
+    event_type = raw_data.get('event_type', 'N/A')
+    update_type = raw_data.get('update_type', 'N/A')
+    payload = raw_data.get('payload', 'N/A')
+    user_id = raw_data.get('user_id', 'N/A')
+    chat_id = raw_data.get('chat_id', 'N/A')
+
+    # Extract message body
+    message = raw_data.get('message', {})
+    body = message.get('body', {})
+    text = body.get('text', '')
+    mid = body.get('mid', 'N/A')
+    seq = body.get('seq', 'N/A')
+
+    # Check for attachments
+    attachments = body.get('attachments', [])
+    att_info = []
+    for att in attachments:
+        att_info.append(f"type={att.get('type')}, payload_keys={list(att.get('payload', {}).keys())}")
+
+    # Check callback
+    callback = raw_data.get('callback', 'N/A')
+
+    # Build debug info
+    debug_lines = [
+        f"🔍 **Debug Info:**",
+        f"event_type: `{event_type}`",
+        f"update_type: `{update_type}`",
+        f"payload: `{payload}`",
+        f"user_id: `{user_id}`",
+        f"chat_id: `{chat_id}`",
+        f"mid: `{mid}`, seq: `{seq}`",
+        f"text: `{text[:50]}`",
+    ]
+    if att_info:
+        debug_lines.append(f"attachments: {', '.join(att_info)}")
+
+    # Check if this is a deep link (payload present)
+    if payload and payload not in ('N/A', '', None):
+        debug_lines.append(f"")
+        debug_lines.append(f"🔗 **DEEP LINK DETECTED!**")
+
+        # Try to decode
+        decoded = decode_invite_payload(payload)
+        if decoded["valid"]:
+            debug_lines.append(f"✅ Decoded: full_name=`{decoded['full_name']}`, chat_id=`{decoded['chat_id']}`")
+            await event.answer("\n".join(debug_lines))
+
+            # Notify the inviter
+            if decoded["chat_id"]:
+                user_info = event.from_user
+                if user_info:
+                    fn = getattr(user_info, 'first_name', '') or ''
+                    ln = getattr(user_info, 'last_name', '') or ''
+                    new_name = f"{fn} {ln}".strip() or "Пользователь"
+                    await event.bot.send_message(
+                        chat_id=decoded["chat_id"],
+                        user_id=event.user_id,
+                        text=f"🔔 **{new_name}** перешёл(а) по вашей ссылке! (через catch-all)",
+                    )
+        else:
+            debug_lines.append(f"❌ Decode failed: reason=`{decoded['reason']}`")
+            await event.answer("\n".join(debug_lines))
+    else:
+        # Not a deep link — just log
+        logger.info(f"Catch-all: type={event_type}, text='{text[:50]}', payload='{payload}'")
 
 
 # ==================== Callback Handlers ====================
@@ -1053,6 +1243,8 @@ async def handle_callback(event):
         "action:help": ("help",),
         # action:cancel — отменить текущую FSM операцию
         "action:cancel": ("cancel",),
+        # action:invite — сгенерировать диплинк для реферальной программы
+        "action:invite": ("invite",),
     }
 
     if callback_data in callbacks:
@@ -1129,7 +1321,7 @@ async def handle_callback(event):
                         "Выберите язык интерфейса:\n"
                         "🇷🇺 Русский — по умолчанию\n"
                         "🇺🇸 English",
-                keyboard=kb.to_dict(),
+                keyboard=kb.build(),
             )
 
         elif command == "help":
@@ -1186,12 +1378,55 @@ async def handle_callback(event):
         await event.answer(f"🔘 Неизвестная кнопка: {callback_data}")
 
 
+# ==================== Deep Link Middleware ====================
+
+async def deep_link_middleware(event, handler):
+    """
+    Middleware to handle deep links for existing users.
+    When an existing user clicks on a deep link, MAX sends message_created with payload.
+    This middleware intercepts and processes the deep link before the normal message handler.
+    """
+    # Check if this update has a payload (deep link)
+    if hasattr(event, 'payload') and event.payload:
+        decoded = decode_invite_payload(event.payload)
+        if decoded["valid"]:
+            inviter_name = decoded["full_name"]
+            inviter_chat_id = decoded["chat_id"]
+
+            # Show welcome message with referrer info
+            text = (
+                f"🎉 **Вы перешли по приглашению!**\n\n"
+                f"Вас пригласил(а) **{inviter_name}**\n\n"
+                f"Теперь вы тоже можете пригласить друзей!\n"
+                f"Нажмите кнопку **🔗 Пригласить друга** в глав меню."
+            )
+            await event.answer(text)
+
+            # Notify the inviter
+            if inviter_chat_id:
+                user_info = event.from_user
+                if user_info:
+                    fn = getattr(user_info, 'first_name', '') or ''
+                    ln = getattr(user_info, 'last_name', '') or ''
+                    new_name = f"{fn} {ln}".strip() or "Новый пользователь"
+                    await event.bot.send_message(
+                        chat_id=inviter_chat_id,
+                        user_id=event.user_id,
+                        text=f"🔔 **{new_name}** перешёл(а) по вашей ссылке!",
+                    )
+            return  # Don't pass to normal handler
+
+    # No deep link — proceed normally
+    return await handler(event)
+
+
 # ==================== Setup Dispatcher ====================
 
 dp = Dispatcher()
 
 # Включаем middleware на роутер
 main_router.middleware()(cleanup_middleware)
+main_router.middleware()(deep_link_middleware)
 
 # Включаем роутеры
 dp.include_router(main_router)
