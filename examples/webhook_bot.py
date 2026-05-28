@@ -8,7 +8,7 @@ import asyncio
 import logging
 import os
 from aiohttp import web
-from aoscam import Bot, Dispatcher, Router, Command
+from aioscam import Bot, Dispatcher, Router, Command
 from aioscam.webhook import AiohttpWebhookHandler
 
 # Setup logging
@@ -28,13 +28,13 @@ router = Router()
 @router.message_created(Command("start"))
 async def cmd_start(event):
     """Handle /start command"""
-    await event.message.answer("👋 Бот работает в режиме Webhook!")
+    await event.answer("👋 Бот работает в режиме Webhook!")
 
 
 @router.message_created(Command("info"))
 async def cmd_info(event):
     """Show bot info"""
-    await event.message.answer(
+    await event.answer(
         "📊 Информация:\n"
         f"🌐 Режим: Webhook\n"
         f"🔗 URL: {WEBHOOK_URL}\n"
@@ -46,7 +46,7 @@ async def cmd_info(event):
 async def echo(event):
     """Echo messages"""
     if event.message.has_text:
-        await event.message.answer(f"🔁 {event.message.text}")
+        await event.answer(f"🔁 {event.text}")
 
 
 # Include router into dispatcher

@@ -1,42 +1,14 @@
 """
 Update types - All possible events (based on real Max API format)
+
+Uses rich types from types/user.py, types/message.py for consistency.
+Raw API field names (user_id, mid, seq) are supported via aliases.
 """
 
 from typing import Optional, Dict, Any
-from datetime import datetime
 from aioscam.types.base import MaxObject
-
-
-class MessageBody(MaxObject):
-    """Message body"""
-    mid: Optional[str] = None
-    seq: Optional[int] = None
-    text: Optional[str] = None
-
-
-class User(MaxObject):
-    """User information"""
-    user_id: Optional[int] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    name: Optional[str] = None
-    is_bot: bool = False
-    last_activity_time: Optional[int] = None
-
-
-class Recipient(MaxObject):
-    """Message recipient"""
-    chat_id: Optional[int] = None
-    chat_type: Optional[str] = None
-    user_id: Optional[int] = None
-
-
-class Message(MaxObject):
-    """Message from update"""
-    recipient: Optional[Recipient] = None
-    sender: Optional[User] = None
-    body: Optional[MessageBody] = None
-    timestamp: Optional[int] = None
+from aioscam.types.user import User
+from aioscam.types.message import Message, MessageBody, Recipient
 
 
 class MessageCreated(MaxObject):
@@ -48,6 +20,16 @@ class MessageCreated(MaxObject):
 
 class BotStarted(MaxObject):
     """Bot started event"""
+    user: Optional[User] = None
+    timestamp: Optional[int] = None
+
+
+class MessageCallback(MaxObject):
+    """Callback event"""
+    id: Optional[str] = None
+    data: Optional[str] = None
+    chat_id: Optional[int] = None
+    message_id: Optional[int] = None
     user: Optional[User] = None
     timestamp: Optional[int] = None
 

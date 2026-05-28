@@ -5,11 +5,20 @@ Message types
 from typing import List, Optional
 from datetime import datetime
 
+from pydantic import Field
+
 from aioscam.types.base import MaxObject
 from aioscam.types.user import User
 from aioscam.types.chat import Chat
 from aioscam.types.attachment import Attachment
 from aioscam.enums import ParseMode, MessageLinkType
+
+
+class Recipient(MaxObject):
+    """Message recipient — used in raw API updates"""
+    chat_id: Optional[int] = None
+    chat_type: Optional[str] = None
+    user_id: Optional[int] = None
 
 
 class MessageEntity(MaxObject):
@@ -36,16 +45,21 @@ class MessageEntity(MaxObject):
 class MessageBody(MaxObject):
     """
     Represents message body/content
-    
+
     Attributes:
         text: Message text
         entities: Message entities (formatting)
         parse_mode: Text parse mode
+        mid: Message ID from API (raw field)
+        seq: Sequence number from API (raw field)
     """
-    
+
     text: Optional[str] = None
     entities: Optional[List[MessageEntity]] = None
     parse_mode: Optional[ParseMode] = None
+    # Raw API fields (present in polling/webhook updates)
+    mid: Optional[str] = None
+    seq: Optional[int] = None
     
     @property
     def has_text(self) -> bool:
@@ -56,11 +70,11 @@ class MessageBody(MaxObject):
 class Message(MaxObject):
     """
     Represents a Max message
-    
+
     Attributes:
-        id: Message ID
+        id: Message ID (optional for raw API parsing)
         chat: Chat where message was sent
-        from_user: Message sender
+        from_user: Message sender (alias: 'sender' for raw API)
         date: Message date
         body: Message body
         reply_to_message: Replied message
@@ -70,11 +84,14 @@ class Message(MaxObject):
         keyboard: Message keyboard
         is_pinned: Whether message is pinned
         edit_date: Message edit date
+        recipient: Message recipient (raw API field)
+        sender: Alias for from_user (raw API compat)
+        timestamp: Message timestamp (raw API compat)
     """
-    
-    id: int
-    chat: Chat
-    from_user: Optional[User] = None
+
+    id: Optional[int] = None
+    chat: Optional[Chat] = None
+    from_user: Optional[User] = Field(default=None, alias="sender")
     date: Optional[datetime] = None
     body: Optional[MessageBody] = None
     reply_to_message: Optional["Message"] = None
@@ -84,6 +101,14 @@ class Message(MaxObject):
     keyboard: Optional[dict] = None
     is_pinned: bool = False
     edit_date: Optional[datetime] = None
+    # Raw API compat fields
+    recipient: Optional[Recipient] = None
+    timestamp: Optional[int] = None
+
+    @property
+    def sender(self) -> Optional[User]:
+        """Alias for from_user (raw API compat)"""
+        return self.from_user
     
     @property
     def text(self) -> Optional[str]:

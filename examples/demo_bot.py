@@ -30,7 +30,7 @@ import sys
 import fcntl
 
 from aioscam import Bot, Dispatcher, Router, Command, F, StateFilter, BotCommand
-from aioscam.enums import ParseMode
+from aioscam.enums import ParseMode, SenderAction
 from aioscam.fsm import State, StatesGroup
 from aioscam.utils.keyboard import KeyboardBuilder
 from aioscam.utils.deep_linking import create_deep_link
@@ -122,69 +122,6 @@ async def cleanup_middleware(event, handler):
 
     # Удаляем предыдущее сообщение бота ПОСЛЕ нового ответа (кроме quiz_msg_id и feedback_msg_id)
     if prev_msg_id and prev_msg_id != quiz_msg_id and prev_msg_id != feedback_msg_id:
-        try:
-            await event.bot.delete_message(prev_msg_id)
-            print(f"🗑️ Deleted prev_msg_id={prev_msg_id}")
-        except Exception as e:
-            print(f"⚠️ Failed to delete prev_msg_id: {e}")
-
-    return result
-
-    async def answer_with_tracking(text, **kwargs):
-        print(f"📝 answer_with_tracking called: text_len={len(text)}")
-        result = await original_answer(text, **kwargs)
-        print(f"📝 answer result type: {type(result)}")
-        # Сохраняем message_id бота в FSM state
-        if result and isinstance(result, dict):
-            msg = result.get('message', result)
-            body = msg.get('body', {})
-            mid = body.get('mid')
-            print(f"📝 answer_with_tracking: extracted mid={mid}")
-            if mid and state:
-                try:
-                    await state.update_data(prev_bot_msg_id=mid)
-                    print(f"✅ Saved prev_bot_msg_id={mid} to state")
-                except Exception as e:
-                    print(f"❌ Failed to save prev_bot_msg_id: {e}")
-        else:
-            print(f"⚠️ answer result is NOT dict: {result}")
-        return result
-
-    event.answer = answer_with_tracking
-
-    # Оборачиваем hide_keyboard чтобы использовал prev_bot_msg_id из FSM state
-    async def hide_keyboard_wrapper(text=None):
-        """Hide keyboard используя prev_bot_msg_id из FSM state"""
-        mid = saved_data.get('prev_bot_msg_id')
-        print(f"🔒 hide_keyboard_wrapper: mid={mid}, text={text}")
-        if not mid:
-            print("⚠️ hide_keyboard: no prev_bot_msg_id found!")
-            return None
-        try:
-            result = await event.bot.edit_message(message_id=mid, text=text, keyboard=None)
-            print(f"✅ edit_message result: {result}")
-            return result
-        except Exception as e:
-            print(f"❌ edit_message error: {e}")
-            raise
-
-    async def answer_and_hide_wrapper(text=None, keyboard=None):
-        """Edit message используя prev_bot_msg_id из FSM state"""
-        mid = saved_data.get('prev_bot_msg_id')
-        print(f"🔒 answer_and_hide_wrapper: mid={mid}")
-        if not mid:
-            return None
-        final_text = text or "✅"
-        return await event.bot.edit_message(message_id=mid, text=final_text, keyboard=keyboard)
-
-    event.hide_keyboard = hide_keyboard_wrapper
-    event.answer_and_hide_keyboard = answer_and_hide_wrapper
-
-    # Выполняем хэндлер
-    result = await handler(event)
-
-    # Удаляем предыдущее сообщение бота ПОСЛЕ того как новый ответ отправлен
-    if prev_msg_id:
         try:
             await event.bot.delete_message(prev_msg_id)
             print(f"🗑️ Deleted prev_msg_id={prev_msg_id}")
@@ -420,15 +357,9 @@ async def cmd_delete(event):
 
     await asyncio.sleep(3)
 
-    # Получаем chat_id и user_id из event context
-    chat_id = None
-    user_id = None
-
-    if hasattr(event, 'chat') and event.chat:
-        chat_id = event.chat.chat_id if hasattr(event.chat, 'chat_id') else event.chat.get('chat_id')
-
-    if hasattr(event, 'from_user') and event.from_user:
-        user_id = event.from_user.user_id if hasattr(event.from_user, 'user_id') else event.from_user.get('user_id')
+    # Extract chat_id and user_id from event context
+    chat_id = event.chat_id
+    user_id = event.user_id
 
     if chat_id and user_id and msg:
         # msg format: {"message": {"body": {"mid": "...", ...}}}
@@ -454,10 +385,10 @@ async def _handle_invite(event):
         user_id = event.user_id
     elif hasattr(event, 'from_user') and event.from_user:
         from_user = event.from_user
-        if hasattr(from_user, 'user_id'):
-            user_id = from_user.user_id
+        if hasattr(from_user, 'id'):
+            user_id = from_user.id
         elif isinstance(from_user, dict):
-            user_id = from_user.get('user_id')
+            user_id = from_user.get('id')
 
     if not user_id:
         await event.answer("⚠️ Не удалось определить ваш ID")

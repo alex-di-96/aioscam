@@ -97,6 +97,44 @@ class EventContext:
         return None
 
     @property
+    def user_id(self) -> Optional[int]:
+        """Get user ID from event (convenience property)"""
+        user = self.from_user
+        if user is None:
+            # Fallback: check event.user_id (for bot_started)
+            if hasattr(self.event, 'user_id'):
+                return self.event.user_id
+            if isinstance(self.event, dict):
+                return self.event.get('user_id')
+            return None
+        if hasattr(user, 'id') and user.id is not None:
+            return user.id
+        if hasattr(user, 'user_id') and user.user_id is not None:
+            return user.user_id
+        if isinstance(user, dict):
+            return user.get('id') or user.get('user_id')
+        return None
+
+    @property
+    def chat_id(self) -> Optional[int]:
+        """Get chat ID from event (convenience property)"""
+        chat = self.chat
+        if chat is None:
+            # Fallback: check event.chat_id (for bot_started/callback)
+            if hasattr(self.event, 'chat_id'):
+                return self.event.chat_id
+            if isinstance(self.event, dict):
+                return self.event.get('chat_id')
+            return None
+        if hasattr(chat, 'chat_id') and chat.chat_id is not None:
+            return chat.chat_id
+        if hasattr(chat, 'id') and chat.id is not None:
+            return chat.id
+        if isinstance(chat, dict):
+            return chat.get('chat_id') or chat.get('id')
+        return None
+
+    @property
     def callback(self) -> Optional[Any]:
         """Get callback data from event"""
         if hasattr(self.event, 'callback'):
@@ -181,17 +219,22 @@ class EventContext:
 
         if self.from_user:
             user = self.from_user
-            if hasattr(user, 'user_id'):
+            # User.id (with alias user_id for raw API)
+            if hasattr(user, 'id') and user.id is not None:
+                user_id = user.id
+            elif hasattr(user, 'user_id') and user.user_id is not None:
                 user_id = user.user_id
             elif isinstance(user, dict):
-                user_id = user.get('user_id')
+                user_id = user.get('id') or user.get('user_id')
 
         if self.chat:
             chat = self.chat
             if hasattr(chat, 'chat_id'):
                 chat_id = chat.chat_id
+            elif hasattr(chat, 'id') and chat.id is not None:
+                chat_id = chat.id
             elif isinstance(chat, dict):
-                chat_id = chat.get('chat_id')
+                chat_id = chat.get('chat_id') or chat.get('id')
 
         if not user_id or not chat_id:
             raise ValueError(f"Cannot determine chat/user ID: chat_id={chat_id}, user_id={user_id}")

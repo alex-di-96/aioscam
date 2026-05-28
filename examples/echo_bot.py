@@ -6,7 +6,7 @@ This example demonstrates a simple bot that echoes all messages back to the user
 
 import asyncio
 import logging
-from aoscam import Bot, Dispatcher, Router, Command, F
+from aioscam import Bot, Dispatcher, Router, Command, F
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -19,7 +19,7 @@ router = Router()
 @router.message_created(Command("start"))
 async def cmd_start(event):
     """Handle /start command"""
-    await event.message.answer(
+    await event.answer(
         "👋 Привет! Я эхо-бот. Отправь мне любое сообщение, и я повторю его!"
     )
 
@@ -27,7 +27,7 @@ async def cmd_start(event):
 @router.message_created(Command("help"))
 async def cmd_help(event):
     """Handle /help command"""
-    await event.message.answer(
+    await event.answer(
         "📖 Доступные команды:\n"
         "/start - Начать работу с ботом\n"
         "/help - Показать справку\n"
@@ -41,16 +41,16 @@ async def echo_message(event):
     if event.message.has_text:
         # Show typing action
         from aioscam.enums import SenderAction
-        await event.bot.send_action(event.message.chat.id, SenderAction.TYPING)
-        
+        await event.bot.send_action(event.chat.id, SenderAction.TYPING)
+
         # Echo the message
-        await event.message.answer(f"🔁 {event.message.text}")
+        await event.answer(f"🔁 {event.text}")
 
 
 @router.message_created(F.message.body.text.func(lambda t: "привет" in t.lower()))
 async def handle_hello(event):
     """Handle hello messages"""
-    await event.message.answer("👋 Привет! Как дела?")
+    await event.answer("👋 Привет! Как дела?")
 
 
 # Include router into dispatcher

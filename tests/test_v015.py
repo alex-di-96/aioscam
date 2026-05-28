@@ -18,14 +18,10 @@ from aioscam.dispatcher.event import EventContext
 from aioscam.dispatcher.router import Router as RouterClass
 from aioscam.fsm import State, StatesGroup, MemoryStorage
 from aioscam.types.keyboard import ClipboardButton
-from aioscam.types.update import (
-    Update, MessageCreated, BotStarted,
-    User as UpdateUser, Recipient, Message as UpdateMessage,
-    MessageBody as UpdateMessageBody
-)
+from aioscam.types.update import Update, MessageCreated, BotStarted
 from aioscam.types.user import User
 from aioscam.types.chat import Chat, ChatType as ChatTypeEnum
-from aioscam.types.message import Message, MessageBody
+from aioscam.types.message import Message, MessageBody, Recipient
 from aioscam.utils.keyboard import KeyboardBuilder
 
 
@@ -206,10 +202,10 @@ class TestHideKeyboard:
     @pytest.mark.asyncio
     async def test_hide_keyboard(self):
         """Test event.hide_keyboard() calls edit_message without keyboard"""
-        sender = UpdateUser(user_id=123, first_name="Test", is_bot=False)
+        sender = User(user_id=123, first_name="Test", is_bot=False)
         recipient = Recipient(chat_id=456, chat_type="dialog", user_id=789)
-        body = UpdateMessageBody(mid="mid.abc123", text="Hello")
-        msg = UpdateMessage(recipient=recipient, sender=sender, body=body)
+        body = MessageBody(mid="mid.abc123", text="Hello")
+        msg = Message(recipient=recipient, sender=sender, body=body)
 
         class FakeEvent:
             def __init__(self):
@@ -232,10 +228,10 @@ class TestHideKeyboard:
     @pytest.mark.asyncio
     async def test_answer_and_hide_keyboard_with_text(self):
         """Test answer_and_hide_keyboard with new text"""
-        sender = UpdateUser(user_id=123, first_name="Test", is_bot=False)
+        sender = User(user_id=123, first_name="Test", is_bot=False)
         recipient = Recipient(chat_id=456, chat_type="dialog", user_id=789)
-        body = UpdateMessageBody(mid="mid.xyz", text="Original")
-        msg = UpdateMessage(recipient=recipient, sender=sender, body=body)
+        body = MessageBody(mid="mid.xyz", text="Original")
+        msg = Message(recipient=recipient, sender=sender, body=body)
 
         class FakeEvent:
             def __init__(self):
@@ -255,10 +251,10 @@ class TestHideKeyboard:
     @pytest.mark.asyncio
     async def test_answer_and_hide_keyboard_with_new_keyboard(self):
         """Test answer_and_hide_keyboard replacing keyboard"""
-        sender = UpdateUser(user_id=123, first_name="Test", is_bot=False)
+        sender = User(user_id=123, first_name="Test", is_bot=False)
         recipient = Recipient(chat_id=456, chat_type="dialog", user_id=789)
-        body = UpdateMessageBody(mid="mid.123", text="Choose")
-        msg = UpdateMessage(recipient=recipient, sender=sender, body=body)
+        body = MessageBody(mid="mid.123", text="Choose")
+        msg = Message(recipient=recipient, sender=sender, body=body)
 
         class FakeEvent:
             def __init__(self):

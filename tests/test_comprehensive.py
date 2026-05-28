@@ -11,11 +11,9 @@ from aioscam import Bot, Dispatcher, Router, Command, F
 from aioscam.filters.builtin import Text as TextFilter, ChatType as ChatTypeFilter
 from aioscam.types.user import User
 from aioscam.types.chat import Chat, ChatType as ChatTypeEnum
-from aioscam.types.message import Message, MessageBody, MessageEntity
+from aioscam.types.message import Message, MessageBody, MessageEntity, Recipient
 from aioscam.types.update import (
     Update, MessageCreated, BotStarted,
-    Message as UpdateMessage, User as UpdateUser, Recipient,
-    MessageBody as UpdateMessageBody
 )
 from aioscam.types.keyboard import (
     Keyboard,
@@ -34,10 +32,10 @@ from aioscam.utils.deep_linking import create_deep_link, parse_deep_link
 
 def _make_event():
     """Create a realistic EventContext with real API structure."""
-    sender = UpdateUser(user_id=39068268, first_name="aLex", last_name="Di", is_bot=False, name="aLex Di")
+    sender = User(user_id=39068268, first_name="aLex", last_name="Di", is_bot=False, name="aLex Di")
     recipient = Recipient(chat_id=243186798, chat_type="dialog", user_id=204119554)
-    body = UpdateMessageBody(mid="mid.xxx", seq=123, text="hello")
-    msg = UpdateMessage(recipient=recipient, sender=sender, body=body, timestamp=1776345558644)
+    body = MessageBody(mid="mid.xxx", seq=123, text="hello")
+    msg = Message(recipient=recipient, sender=sender, body=body, timestamp=1776345558644)
 
     class FakeEvent:
         def __init__(self):
@@ -52,10 +50,10 @@ def _make_event():
 
 def _make_event_with_text(text: str):
     """Create EventContext with specific text."""
-    sender = UpdateUser(user_id=123, first_name="Test", is_bot=False)
+    sender = User(user_id=123, first_name="Test", is_bot=False)
     recipient = Recipient(chat_id=456, chat_type="dialog", user_id=789)
-    body = UpdateMessageBody(text=text)
-    msg = UpdateMessage(recipient=recipient, sender=sender, body=body)
+    body = MessageBody(text=text)
+    msg = Message(recipient=recipient, sender=sender, body=body)
 
     class FakeEvent:
         def __init__(self):
@@ -160,25 +158,25 @@ class TestTypes:
 
     def test_update_message_created(self):
         """Test Update with MessageCreated event using real API format"""
-        sender = UpdateUser(user_id=39068268, first_name="aLex", is_bot=False)
+        sender = User(user_id=39068268, first_name="aLex", is_bot=False)
         recipient = Recipient(chat_id=243186798, chat_type="dialog", user_id=204119554)
-        body = UpdateMessageBody(mid="mid.xxx", seq=123, text="test")
-        msg = UpdateMessage(recipient=recipient, sender=sender, body=body, timestamp=1776345558644)
+        body = MessageBody(mid="mid.xxx", seq=123, text="test")
+        msg = Message(recipient=recipient, sender=sender, body=body, timestamp=1776345558644)
 
         msg_created = MessageCreated(message=msg, timestamp=1776345558644, user_locale="ru")
 
         assert msg_created.message is not None
         assert msg_created.message.body.text == "test"
-        assert msg_created.message.sender.user_id == 39068268
+        assert msg_created.message.sender.id == 39068268
         assert msg_created.message.recipient.chat_id == 243186798
 
     def test_update_bot_started(self):
         """Test Update with BotStarted event"""
-        user = UpdateUser(user_id=123, first_name="Test", is_bot=False)
+        user = User(user_id=123, first_name="Test", is_bot=False)
         bot_started = BotStarted(user=user, timestamp=1776345558644)
 
         assert bot_started.user is not None
-        assert bot_started.user.user_id == 123
+        assert bot_started.user.id == 123
 
     def test_update_from_dict(self):
         """Test Update created from real API dict format"""

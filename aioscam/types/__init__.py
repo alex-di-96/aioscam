@@ -5,7 +5,7 @@ Types module - All data structures for Max API
 from aioscam.types.base import MaxObject
 from aioscam.types.user import User
 from aioscam.types.chat import Chat
-from aioscam.types.message import Message, MessageBody, MessageEntity
+from aioscam.types.message import Message, MessageBody, MessageEntity, Recipient
 from aioscam.types.update import Update
 from aioscam.types.keyboard import (
     Keyboard,
@@ -44,6 +44,7 @@ __all__ = [
     "Message",
     "MessageBody",
     "MessageEntity",
+    "Recipient",
     "Update",
     "Keyboard",
     "InlineKeyboard",

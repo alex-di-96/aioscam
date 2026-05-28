@@ -7,7 +7,7 @@ This example demonstrates how to use middleware for logging and timing.
 import asyncio
 import logging
 import time
-from aoscam import Bot, Dispatcher, Router, Command
+from aioscam import Bot, Dispatcher, Router, Command
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -45,14 +45,14 @@ async def timing_middleware(event, handler):
 @router.message_created(Command("start"))
 async def cmd_start(event):
     """Handle /start command"""
-    await event.message.answer("👋 Привет! Я бот с middleware.")
+    await event.answer("👋 Привет! Я бот с middleware.")
 
 
 @router.message_created(Command("slow"))
 async def cmd_slow(event):
     """Simulate slow operation"""
     await asyncio.sleep(2)  # Simulate work
-    await event.message.answer("⏳ Готово! Это заняло 2 секунды.")
+    await event.answer("⏳ Готово! Это заняло 2 секунды.")
 
 
 # Include router into dispatcher

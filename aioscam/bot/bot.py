@@ -7,6 +7,9 @@ from typing import Any, Dict, List, Optional, Union
 
 from aioscam.client import AioScamClient
 from aioscam.client.response import Response
+from aioscam.limiter import RateLimitConfig
+from aioscam.methods.base import BaseMethod
+from aioscam.methods import GetMe, SendMessage, GetUpdates
 from aioscam.enums import (
     ApiPath,
     ChatPermission,
@@ -39,16 +42,18 @@ class Bot:
         timeout: int = 30,
         parse_mode: Optional[ParseMode] = None,
         client: Optional[AioScamClient] = None,
+        rate_limit: Optional[RateLimitConfig] = None,
     ):
         """
         Initialize bot
-        
+
         Args:
             token: Bot token (or from MAX_BOT_TOKEN env)
             base_url: Max API base URL
             timeout: Request timeout in seconds
             parse_mode: Default parse mode for messages
             client: Custom AioScamClient instance
+            rate_limit: Rate limiter configuration (ignored if client is provided)
         """
         self.token = token or os.getenv("MAX_BOT_TOKEN")
         if not self.token:
@@ -56,12 +61,13 @@ class Bot:
                 "Bot token is not provided. "
                 "Pass it explicitly or set MAX_BOT_TOKEN environment variable."
             )
-        
+
         self.parse_mode = parse_mode
         self._client = client or AioScamClient(
             token=self.token,
             base_url=base_url,
             timeout=timeout,
+            rate_limit=rate_limit,
         )
         self._me: Optional[Dict[str, Any]] = None
     
@@ -69,7 +75,19 @@ class Bot:
     def client(self) -> AioScamClient:
         """Get underlying HTTP client"""
         return self._client
-    
+
+    async def execute(self, method: BaseMethod) -> Any:
+        """
+        Execute an API method object
+
+        Args:
+            method: BaseMethod instance (e.g. GetMe(), SendMessage(...))
+
+        Returns:
+            API response result
+        """
+        return await method.execute(self)
+
     async def close(self) -> None:
         """Close HTTP session"""
         await self._client.close()
@@ -85,17 +103,13 @@ class Bot:
     async def get_me(self) -> Dict[str, Any]:
         """
         Get bot information
-        
+
         Returns:
             Dict with bot info
         """
         if self._me is None:
-            response = await self._client.request(
-                ApiPath.GET_ME.value,
-                method=HttpMethod.GET,
-            )
-            self._me = response.result
-        
+            self._me = await self.execute(GetMe())
+
         return self._me
     
     async def get_me_from_chat(self, chat_id: Union[int, str]) -> Dict[str, Any]:
@@ -142,48 +156,49 @@ class Bot:
         Returns:
             Sent message data
         """
-        # Query params
-        params: Dict[str, Any] = {}
+        # Use method object when no extra kwargs
+        if not kwargs:
+            return await self.execute(SendMessage(
+                chat_id=int(chat_id) if chat_id is not None else None,
+                text=text,
+                user_id=user_id,
+                parse_mode=self.parse_mode,
+                reply_to_mid=reply_to_mid,
+                keyboard=keyboard,
+                format=format,
+            ))
 
+        # Fallback to direct request for extra kwargs
+        params: Dict[str, Any] = {}
         if chat_id is not None:
             params["chat_id"] = int(chat_id)
-
         if user_id is not None:
             params["user_id"] = user_id
 
-        # Request body
-        body: Dict[str, Any] = {
-            "text": text,
-            "attachments": [],
-        }
-
+        body: Dict[str, Any] = {"text": text, "attachments": []}
         if format:
             body["format"] = format
         elif self.parse_mode:
             body["format"] = self.parse_mode.value
 
-        # Add inline keyboard to attachments if provided
         if keyboard:
-            # Check if it's an InlineKeyboard dict (has 'type': 'inline_keyboard')
             if keyboard.get("type") == "inline_keyboard":
                 body["attachments"].append(keyboard)
             else:
-                # Assume it's a regular keyboard dict with 'buttons'
                 body["attachments"].append({
                     "type": "inline_keyboard",
-                    "payload": keyboard
+                    "payload": keyboard,
                 })
 
         if reply_to_mid:
             body["link"] = {"mid": reply_to_mid, "type": "reply"}
 
-        # Merge other kwargs
         for key, value in kwargs.items():
             if key == "attachments":
                 body["attachments"].extend(value)
             else:
                 body[key] = value
-        
+
         response = await self._client.request(
             ApiPath.SEND_MESSAGE.value,
             method=HttpMethod.POST,
@@ -481,33 +496,73 @@ class Bot:
     async def send_callback(
         self,
         callback_id: str,
-        answer: str,
-        message_id: str,
-        show_alert: bool = False,
+        message: Optional[str] = None,
+        notification: Optional[str] = None,
+        message_id: Optional[str] = None,
+        format: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Send callback answer
 
+        Matches official Max SDK (Python, Go, TypeScript):
+        - URL: https://botapi.max.ru/answers
+        - Auth: access_token in query params
+        - Body: JSON {"message": NewMessageBody, "notification": string}
+
         Args:
             callback_id: Callback ID (required by Max API)
-            answer: Answer text
-            message_id: Message ID
-            show_alert: Show alert
+            message: Answer text (optional)
+            notification: Notification popup text (optional)
+            message_id: Message ID to edit (optional)
+            format: Text format — "markdown" or "html" (optional)
 
         Returns:
             Callback response data
         """
-        # Max API requires root-level /answers endpoint (not /api/bot/answers)
-        # See: BUGS_AND_FIXES.md for details
-        callback_url = "https://platform-api.max.ru/answers"
-        response = await self._client.request_form(
-            callback_url,
-            params={"callback_id": callback_id},
-            data={
-                "message": answer,
-            },
-        )
-        return response.result
+        # Use botapi.max.ru for callback endpoint (matches official Python SDK)
+        callback_url = "https://botapi.max.ru/answers"
+        
+        import aiohttp
+        
+        session = await self._client._get_session()
+        
+        # Python SDK uses access_token in query params
+        params = {
+            "callback_id": callback_id,
+            "access_token": self.token,
+        }
+        
+        # Build NewMessageBody structure (matches OpenAPI schema)
+        body: Dict[str, Any] = {}
+        
+        if message is not None:
+            msg_body: Dict[str, Any] = {"text": message}
+            if format:
+                msg_body["format"] = format
+            elif self.parse_mode:
+                msg_body["format"] = self.parse_mode.value
+            body["message"] = msg_body
+        
+        if notification is not None:
+            body["notification"] = notification
+        
+        async with session.post(
+            url=callback_url,
+            params=params,
+            json=body,
+            headers={"Content-Type": "application/json"},
+            timeout=aiohttp.ClientTimeout(total=self._client.default_timeout),
+        ) as resp:
+            response_text = await resp.text()
+            
+            if resp.status != 200:
+                from aioscam.exceptions import ApiError
+                raise ApiError(f"HTTP {resp.status}: {response_text}")
+            
+            try:
+                return await resp.json()
+            except:
+                return {"raw": response_text}
     
     # ==================== Actions ====================
     
@@ -990,25 +1045,15 @@ class Bot:
         Returns:
             List of updates
         """
-        params: Dict[str, Any] = {
-            "limit": min(limit, 1000),
-            "timeout": min(timeout, 90),
-        }
-
-        if marker is not None:
-            params["marker"] = marker
-
-        if types:
-            params["types"] = types
-
-        response = await self._client.request(
-            ApiPath.GET_UPDATES.value,
-            method=HttpMethod.GET,
-            params=params,
-        )
+        result = await self.execute(GetUpdates(
+            marker=marker,
+            limit=limit,
+            timeout=timeout,
+            types=types,
+        ))
 
         # Response format: {"updates": [...], "marker": 123}
-        result = response.result or {}
+        result = result or {}
         if isinstance(result, dict):
             return result.get("updates", [])
         return result if isinstance(result, list) else []

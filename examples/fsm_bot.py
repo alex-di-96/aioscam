@@ -6,7 +6,7 @@ This example demonstrates a bot with finite state machine for user registration.
 
 import asyncio
 import logging
-from aoscam import Bot, Dispatcher, Router, Command
+from aioscam import Bot, Dispatcher, Router, Command
 from aioscam.fsm import State, StatesGroup
 
 # Setup logging
@@ -28,7 +28,7 @@ class RegistrationState(StatesGroup):
 async def cmd_register(event, state):
     """Start registration process"""
     await state.set_state(RegistrationState.waiting_name)
-    await event.message.answer(
+    await event.answer(
         "📝 Регистрация\n\n"
         "Введите ваше имя:"
     )
@@ -39,7 +39,7 @@ async def process_name(event, state):
     """Process name input"""
     await state.update_data(name=event.message.text)
     await state.set_state(RegistrationState.waiting_age)
-    await event.message.answer("Отлично! Теперь введите ваш возраст:")
+    await event.answer("Отлично! Теперь введите ваш возраст:")
 
 
 @router.message_created(RegistrationState.waiting_age)
@@ -48,21 +48,21 @@ async def process_age(event, state):
     try:
         age = int(event.message.text)
         if age < 1 or age > 150:
-            await event.message.answer("Пожалуйста, введите корректный возраст (1-150):")
+            await event.answer("Пожалуйста, введите корректный возраст (1-150):")
             return
         
         await state.update_data(age=age)
         await state.set_state(RegistrationState.waiting_email)
-        await event.message.answer("Теперь введите ваш email:")
+        await event.answer("Теперь введите ваш email:")
     except ValueError:
-        await event.message.answer("Пожалуйста, введите число:")
+        await event.answer("Пожалуйста, введите число:")
 
 
 @router.message_created(RegistrationState.waiting_email)
 async def process_email(event, state):
     """Process email input"""
     if "@" not in event.message.text:
-        await event.message.answer("Пожалуйста, введите корректный email:")
+        await event.answer("Пожалуйста, введите корректный email:")
         return
     
     await state.update_data(email=event.message.text)
@@ -72,7 +72,7 @@ async def process_email(event, state):
     
     await state.set_state(None)  # Clear state
     
-    await event.message.answer(
+    await event.answer(
         "✅ Регистрация завершена!\n\n"
         f"📛 Имя: {data['name']}\n"
         f"🔢 Возраст: {data['age']}\n"
@@ -86,15 +86,15 @@ async def cmd_cancel(event, state):
     current_state = await state.get_state()
     if current_state:
         await state.set_state(None)
-        await event.message.answer("❌ Регистрация отменена.\n\n/ register - начать заново")
+        await event.answer("❌ Регистрация отменена.\n\n/ register - начать заново")
     else:
-        await event.message.answer("У вас нет активной регистрации.")
+        await event.answer("У вас нет активной регистрации.")
 
 
 @router.message_created(Command("start"))
 async def cmd_start(event):
     """Handle /start command"""
-    await event.message.answer(
+    await event.answer(
         "👋 Добро пожаловать!\n\n"
         "Используйте /register для начала регистрации\n"
         "Используйте /cancel для отмены"

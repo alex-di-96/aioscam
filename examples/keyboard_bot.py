@@ -6,7 +6,7 @@ This example demonstrates how to create and use keyboards with buttons.
 
 import asyncio
 import logging
-from aoscam import Bot, Dispatcher, Router, Command
+from aioscam import Bot, Dispatcher, Router, Command
 from aioscam.utils.keyboard import KeyboardBuilder
 from aioscam.enums import ButtonType
 
@@ -32,7 +32,7 @@ async def cmd_start(event):
     
     keyboard = builder.build()
     
-    await event.message.answer(
+    await event.answer(
         "👋 Добро пожаловать!\n\n"
         "Выберите действие:",
         keyboard=keyboard.to_dict()
@@ -60,7 +60,7 @@ async def cmd_menu(event):
     
     keyboard = builder.build()
     
-    await event.message.answer(
+    await event.answer(
         "📱 Главное меню:",
         keyboard=keyboard.to_dict()
     )
@@ -69,8 +69,8 @@ async def cmd_menu(event):
 @router.callback_query()
 async def handle_callback(event):
     """Handle callback queries"""
-    callback_data = event.callback.data
-    
+    callback_data = event.callback_data
+
     if callback_data == "stats":
         await event.answer("📊 Статистика: пока нет данных")
     elif callback_data == "settings":

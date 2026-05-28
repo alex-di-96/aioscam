@@ -94,17 +94,21 @@ class Dispatcher(Router):
             if isinstance(cb, dict) and 'user' in cb:
                 user = cb['user']
                 if isinstance(user, dict):
-                    user_id = user.get('user_id')
-                elif hasattr(user, 'user_id'):
+                    user_id = user.get('id') or user.get('user_id')
+                elif hasattr(user, 'id') and user.id is not None:
+                    user_id = user.id
+                elif hasattr(user, 'user_id') and user.user_id is not None:
                     user_id = user.user_id
-        
+
         # For messages: extract from sender
         if user_id is None and hasattr(context, 'from_user') and context.from_user:
             user = context.from_user
-            if hasattr(user, 'user_id'):
+            if hasattr(user, 'id') and user.id is not None:
+                user_id = user.id
+            elif hasattr(user, 'user_id') and user.user_id is not None:
                 user_id = user.user_id
             elif isinstance(user, dict):
-                user_id = user.get('user_id')
+                user_id = user.get('id') or user.get('user_id')
 
         return chat_id, user_id
 
@@ -348,7 +352,9 @@ class Dispatcher(Router):
                         chat_id = chat.get('chat_id')
                 if hasattr(context, 'from_user') and context.from_user:
                     user = context.from_user
-                    if hasattr(user, 'user_id'):
+                    if hasattr(user, 'id') and user.id is not None:
+                        user_id = user.id
+                    elif hasattr(user, 'user_id') and user.user_id is not None:
                         user_id = user.user_id
                     elif isinstance(user, dict):
                         user_id = user.get('user_id')

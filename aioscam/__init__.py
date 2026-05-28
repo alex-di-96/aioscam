@@ -10,6 +10,7 @@ from aioscam.dispatcher import Dispatcher, Router
 from aioscam.filters import Command, StartCommand, F, StateFilter
 from aioscam.types.command import BotCommand
 from aioscam.config import Config, get_config, EnvMode
+from aioscam.methods import BaseMethod, SendMessage, GetMe, GetUpdates
 
 __all__ = [
     "Bot",
@@ -23,4 +24,8 @@ __all__ = [
     "Config",
     "get_config",
     "EnvMode",
+    "BaseMethod",
+    "SendMessage",
+    "GetMe",
+    "GetUpdates",
 ]

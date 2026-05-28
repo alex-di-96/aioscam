@@ -6,7 +6,7 @@ This example demonstrates advanced routing and filtering.
 
 import asyncio
 import logging
-from aoscam import Bot, Dispatcher, Router, Command, F
+from aioscam import Bot, Dispatcher, Router, Command, F
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -25,13 +25,13 @@ common_router = Router(name="common")
 @admin_router.message_created(Command(["admin", "stats"]))
 async def cmd_admin(event):
     """Admin command"""
-    await event.message.answer("👑 Админ панель\n\n📊 Статистика бота активна")
+    await event.answer("👑 Админ панель\n\n📊 Статистика бота активна")
 
 
 @admin_router.message_created(F.message.body.text.func(lambda t: t.startswith("!")))
 async def admin_command(event):
     """Handle admin commands starting with !"""
-    await event.message.answer(f"⚙️ Выполняю: {event.message.text}")
+    await event.answer(f"⚙️ Выполняю: {event.message.text}")
 
 
 # ==================== User Router ====================
@@ -39,19 +39,19 @@ async def admin_command(event):
 @user_router.message_created(Command("profile"))
 async def cmd_profile(event):
     """Show user profile"""
-    await event.message.answer("👤 Профиль пользователя")
+    await event.answer("👤 Профиль пользователя")
 
 
 @user_router.message_created(Command("settings"))
 async def cmd_settings(event):
     """Show settings"""
-    await event.message.answer("⚙️ Настройки")
+    await event.answer("⚙️ Настройки")
 
 
 @user_router.message_created(F.message.body.text.contains(["помощь", "help"]))
 async def help_filter(event):
     """Handle messages containing 'помощь' or 'help'"""
-    await event.message.answer("💡 Для помощи используйте /help")
+    await event.answer("💡 Для помощи используйте /help")
 
 
 # ==================== Common Router ====================
@@ -59,7 +59,7 @@ async def help_filter(event):
 @common_router.message_created(Command("start"))
 async def cmd_start(event):
     """Handle /start command"""
-    await event.message.answer(
+    await event.answer(
         "👋 Добро пожаловать!\n\n"
         "Доступные команды:\n"
         "/admin - Админ панель\n"
@@ -72,7 +72,7 @@ async def cmd_start(event):
 @common_router.message_created(Command("help"))
 async def cmd_help(event):
     """Handle /help command"""
-    await event.message.answer(
+    await event.answer(
         "📖 Справка:\n\n"
         "Это демонстрационный бот с несколькими роутерами.\n"
         "Попробуйте разные команды!"
@@ -82,7 +82,7 @@ async def cmd_help(event):
 @common_router.message_created(F.message.body.text.func(lambda t: "привет" in t.lower()))
 async def hello_handler(event):
     """Handle hello messages"""
-    await event.message.answer("👋 Привет! Как дела?")
+    await event.answer("👋 Привет! Как дела?")
 
 
 # Include routers in order

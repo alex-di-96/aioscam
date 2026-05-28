@@ -3,15 +3,16 @@ User type
 """
 
 from typing import Optional
+from pydantic import Field
 from aioscam.types.base import MaxObject
 
 
 class User(MaxObject):
     """
     Represents a Max user
-    
+
     Attributes:
-        id: User ID
+        id: User ID (also accepts 'user_id' from raw API)
         username: Username
         first_name: First name
         last_name: Last name
@@ -19,9 +20,11 @@ class User(MaxObject):
         is_bot: Whether user is a bot
         is_premium: Whether user has premium
         language_code: User language
+        name: Alias for display_name (raw API compat)
+        last_activity_time: Last activity timestamp (raw API compat)
     """
-    
-    id: int
+
+    id: Optional[int] = Field(default=None, alias="user_id")
     username: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
@@ -29,6 +32,9 @@ class User(MaxObject):
     is_bot: bool = False
     is_premium: Optional[bool] = None
     language_code: Optional[str] = None
+    # Raw API compat fields
+    name: Optional[str] = None
+    last_activity_time: Optional[int] = None
     
     @property
     def full_name(self) -> str:

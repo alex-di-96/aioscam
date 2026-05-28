@@ -18,10 +18,9 @@ import os
 from dotenv import load_dotenv
 
 from aioscam import Bot, Dispatcher, Router, StartCommand, Command, F
-from aioscam.types import Message, Update
-from aioscam.types.keyboard import InlineKeyboardBuilder, InlineButton
-from aioscam.types.parse_mode import ParseMode
-from aioscam.utils import create_deep_link
+from aioscam.enums import ParseMode
+from aioscam.utils.deep_linking import create_deep_link
+from aioscam.utils.keyboard import KeyboardBuilder
 
 load_dotenv()
 
@@ -29,24 +28,25 @@ router = Router()
 
 
 @router.bot_started()
-async def on_bot_started(event: Update):
+async def on_bot_started(event):
     """Handle bot_started event (user opens bot dialog)"""
-    user_id = event.user_id or (event.user.id if event.user else "unknown")
+    user_id = event.user_id or "unknown"
+    chat_id = event.chat_id or user_id
 
     # Check if this is a deep link (has payload)
     if event.payload:
-        await handle_deep_link(event, user_id)
+        await handle_deep_link(event, user_id, chat_id)
     else:
         # Regular start without deep link
         await event.bot.send_message(
-            chat_id=event.chat_id or user_id,
+            chat_id=chat_id,
             text="👋 Привет! Я демо-бот диплинков.\n\n"
                  "Нажми кнопку ниже чтобы получить персональную ссылку-приглашение!",
-            keyboard=_invite_keyboard(event.bot.username),
+            keyboard=_invite_keyboard().to_dict(),
         )
 
 
-async def handle_deep_link(event: Update, user_id):
+async def handle_deep_link(event, user_id, chat_id):
     """Process deep link payload"""
     payload = event.payload
 
@@ -69,42 +69,46 @@ async def handle_deep_link(event: Update, user_id):
         )
 
     await event.bot.send_message(
-        chat_id=event.chat_id or user_id,
+        chat_id=chat_id,
         text=text,
     )
 
 
 @router.message_created(Command("start"))
-async def on_start(event: Update):
+async def on_start(event):
     """Handle /start command"""
-    user_id = event.user_id or (event.user.id if event.user else "unknown")
+    user_id = event.user_id or (event.from_user.id if event.from_user else "unknown")
+    chat_id = event.chat_id or user_id
 
     await event.bot.send_message(
-        chat_id=event.chat_id or user_id,
+        chat_id=chat_id,
         text="👋 Привет!\n\n"
              "Нажми кнопку ниже чтобы получить персональную ссылку-приглашение.\n"
              "Когда кто-то перейдёт по ней — бот узнает кто пригласил!",
-        keyboard=_invite_keyboard(event.bot.username),
+        keyboard=_invite_keyboard().to_dict(),
     )
 
 
 @router.message_created(Command("help"))
-async def on_help(event: Update):
+async def on_help(event):
     """Handle /help command"""
+    chat_id = event.chat_id or event.user_id
     await event.bot.send_message(
-        chat_id=event.chat_id or event.user_id,
+        chat_id=chat_id,
         text="**Демо диплинков**\n\n"
              "/start — начать работу\n"
              "/help — эта справка\n\n"
              "Используй кнопку 'Пригласить друга' для создания персональной ссылки.",
+        format="markdown",
     )
 
 
-@router.message_created(F.data.startswith("get_invite_link"))
-async def on_get_invite_link(event: Update):
+@router.message_callback(F.callback.data.startswith("get_invite_link"))
+async def on_get_invite_link(event):
     """Generate personal invite link"""
-    user_id = event.user_id or (event.user.id if event.user else 0)
-    bot_username = event.bot.username or "my_bot"
+    user_id = event.user_id or (event.from_user.id if event.from_user else 0)
+    bot_info = await event.bot.get_me()
+    bot_username = bot_info.get("username", "my_bot")
 
     # Create deep link with user's ID as payload
     invite_link = create_deep_link(bot_username, f"ref_{user_id}")
@@ -115,13 +119,14 @@ async def on_get_invite_link(event: Update):
              f"`{invite_link}`\n\n"
              f"Поделись ей с друзьями!\n"
              f"Когда они перейдут — бот узнает что их пригласил ты (ID: {user_id})",
+        format="markdown",
     )
 
 
-def _invite_keyboard(bot_username: str) -> InlineKeyboardBuilder:
+def _invite_keyboard() -> KeyboardBuilder:
     """Build keyboard with invite link button"""
-    kb = InlineKeyboardBuilder()
-    kb.add_button(InlineButton(text="📤 Пригласить друга", callback_data="get_invite_link"))
+    kb = KeyboardBuilder(inline=True)
+    kb.callback("📤 Пригласить друга", "get_invite_link")
     return kb
 
 
@@ -130,13 +135,15 @@ async def main():
         token=os.getenv("MAX_BOT_TOKEN"),
         parse_mode=ParseMode.MARKDOWN,
     )
-    dp = Dispatcher(bot)
+    dp = Dispatcher()
     dp.include_router(router)
 
-    print(f"Bot started: @{bot.username}")
-    print(f"Deep link example: https://max.ru/{bot.username}?start=ref_12345")
+    me = await bot.get_me()
+    bot_username = me.get("username", "my_bot")
+    print(f"Bot started: @{bot_username}")
+    print(f"Deep link example: https://max.ru/{bot_username}?start=ref_12345")
 
-    await dp.start_polling()
+    await dp.start_polling(bot)
 
 
 if __name__ == "__main__":

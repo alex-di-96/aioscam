@@ -16,16 +16,16 @@ from aioscam.fsm.memory import MemoryStorage
 from aioscam.exceptions import BotTokenError, DispatcherError
 from aioscam.types.user import User
 from aioscam.types.chat import Chat, ChatType as ChatTypeEnum
-from aioscam.types.message import Message, MessageBody
-from aioscam.types.update import Update, MessageCreated, User as UpdateUser, Recipient, Message as UpdateMessage, MessageBody as UpdateMessageBody
+from aioscam.types.message import Message, MessageBody, Recipient
+from aioscam.types.update import Update, MessageCreated
 
 
 def _make_event_with_text(text: str):
     """Create EventContext with specific text."""
-    sender = UpdateUser(user_id=123, first_name="Test", is_bot=False)
+    sender = User(user_id=123, first_name="Test", is_bot=False)
     recipient = Recipient(chat_id=456, chat_type="dialog", user_id=789)
-    body = UpdateMessageBody(text=text)
-    msg = UpdateMessage(recipient=recipient, sender=sender, body=body)
+    body = MessageBody(text=text)
+    msg = Message(recipient=recipient, sender=sender, body=body)
 
     class FakeEvent:
         def __init__(self):
@@ -218,10 +218,10 @@ class TestSecurityEventContext:
 
     def test_event_context_no_mutation(self):
         """Test that EventContext doesn't mutate input event"""
-        sender = UpdateUser(user_id=123, first_name="Test", is_bot=False)
+        sender = User(user_id=123, first_name="Test", is_bot=False)
         recipient = Recipient(chat_id=456, chat_type="dialog", user_id=789)
-        body = UpdateMessageBody(text="test")
-        msg = UpdateMessage(recipient=recipient, sender=sender, body=body)
+        body = MessageBody(text="test")
+        msg = Message(recipient=recipient, sender=sender, body=body)
 
         class FakeEvent:
             def __init__(self):
@@ -244,10 +244,10 @@ class TestSecurityEventContext:
 
     def test_event_context_properties(self):
         """Test EventContext property access with real API structure"""
-        sender = UpdateUser(user_id=39068268, first_name="aLex", last_name="Di", is_bot=False, name="aLex Di")
+        sender = User(user_id=39068268, first_name="aLex", last_name="Di", is_bot=False, name="aLex Di")
         recipient = Recipient(chat_id=243186798, chat_type="dialog", user_id=204119554)
-        body = UpdateMessageBody(mid="mid.xxx", seq=123, text="hello")
-        msg = UpdateMessage(recipient=recipient, sender=sender, body=body, timestamp=1776345558644)
+        body = MessageBody(mid="mid.xxx", seq=123, text="hello")
+        msg = Message(recipient=recipient, sender=sender, body=body, timestamp=1776345558644)
 
         class FakeEvent:
             def __init__(self):
@@ -264,9 +264,9 @@ class TestSecurityEventContext:
         # chat returns recipient (Recipient object)
         assert context.chat == recipient
         assert context.chat.chat_id == 243186798
-        # from_user returns sender (UpdateUser object)
+        # from_user returns sender (User object)
         assert context.from_user == sender
-        assert context.from_user.user_id == 39068268
+        assert context.from_user.id == 39068268
         # text returns body.text
         assert context.text == "hello"
 
