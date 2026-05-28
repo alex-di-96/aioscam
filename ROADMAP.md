@@ -1,6 +1,6 @@
 # AioScam Roadmap
 
-## v0.1.6 — Current (2026-05-19)
+## v0.1.6.2 — Current (2026-05-28)
 
 ✅ Markdown/HTML formatting (`format` param on send_message/edit_message)
 ✅ `BotCommand` type + `set_my_commands()` — bot command menu
@@ -10,17 +10,23 @@
 ✅ 11 new event decorators
 ✅ StateGuard configuration in Dispatcher params
 ✅ ClipboardButton.payload support
-✅ 100/100 tests passing
+✅ Rate limiter — token bucket, 429 retry, exponential backoff
+✅ methods/ API — `Bot.execute(GetMe())`, `Bot.execute(SendMessage(...))`
+✅ send_callback — SDK-aligned (botapi.max.ru, JSON, NewMessageBody)
+✅ Type dedup — single source truth for User/Message/MessageBody
+✅ EventContext — `user_id`, `chat_id` convenience properties
+✅ 141/141 tests passing (+41 new)
+✅ 12 example bots (3 new)
 
 ## Planned
 
-### v0.1.6
+### v0.1.7
 
-- [ ] Global rate limiter (queue-based, 429 retry via `Retry-After`)
 - [ ] `forward_message()` method
 - [ ] `reply_to` parameter in `send_message()`
 - [ ] Poll types support (`poll`, `quiz` in API)
 - [ ] `delete_messages()` — batch delete
+- [ ] CI/CD pipeline (GitHub Actions)
 
 ### v0.2.0
 
@@ -38,6 +44,17 @@
 - [ ] Admin panel integration
 
 ## Done
+
+### v0.1.6.1 (2026-05-20)
+
+- Deep link support (StartCommand filter)
+- Update class with bot_started payload
+
+### v0.1.6 (2026-05-19)
+
+- Initial v0.1.6 release
+- 35/35 API methods
+- 14 event types
 
 ### v0.1.4.2 (2026-04-27)
 
