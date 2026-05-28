@@ -1384,15 +1384,13 @@ async def handle_callback(event):
         elif command == "settings":
             # RU: Открыть настройки — выбор языка с отметкой текущего
             # EN: Open settings — language selection with current locale checkmark
-            user_id = event.user_id or 0
             current_locale = event.data.get('locale', event.locale or 'ru')
             kb = _settings_keyboard(current_locale)
-            await event.bot.send_callback(
-                callback_id=event.callback_id,
-                message="⚙️ **Настройки**\n\n"
-                        "Выберите язык интерфейса:\n"
-                        "🇷🇺 Русский — по умолчанию\n"
-                        "🇺🇸 English",
+            await event.answer(
+                "⚙️ **Параметры**\n\n"
+                "Выберите язык интерфейса:\n"
+                "🇷🇺 Русский — по умолчанию\n"
+                "🇺🇸 English",
                 keyboard=kb.build(),
             )
 
@@ -1439,10 +1437,12 @@ async def handle_callback(event):
         # Show settings again with updated checkmark
         kb = _settings_keyboard(locale)
         lang_name = "Русский" if locale == "ru" else "English"
-        await event.bot.send_callback(
-            callback_id=event.callback_id,
-            message=f"✅ Язык изменён на **{lang_name}**",
-            keyboard=kb.to_dict(),
+        await event.answer(
+            f"✅ Язык изменён на **{lang_name}**\n\n"
+            "Выберите язык интерфейса:\n"
+            "🇷🇺 Русский — по умолчанию\n"
+            "🇺🇸 English",
+            keyboard=kb.build(),
         )
 
     else:
