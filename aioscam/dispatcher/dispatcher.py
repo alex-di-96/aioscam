@@ -256,26 +256,30 @@ class Dispatcher(Router):
         try:
             while self._running:
                 try:
-                    updates_response = await bot.get_updates(
+                    updates_data = await bot.get_updates(
                         marker=self._polling_offset,
                         limit=limit,
                         timeout=timeout,
                     )
-                    
+
+                    # Extract updates and marker from response
+                    updates_response = updates_data.get("updates", [])
+                    api_marker = updates_data.get("marker")
+
                     # Reset retry count on success
                     retry_count = 0
-                    
+
                     if updates_response:
                         logger.info(f"Received {len(updates_response)} updates")
-                        
+
                         for update_data in updates_response:
                             try:
                                 # Handle string updates
                                 if isinstance(update_data, str):
                                     update_data = json.loads(update_data)
-                                
+
                                 logger.info(f"Raw update data: {update_data}")
-                                
+
                                 update = Update(**update_data)
                                 await self._process_update(bot, update)
                             except Exception as e:
@@ -283,15 +287,10 @@ class Dispatcher(Router):
                                 logger.error(f"Problematic update data: {update_data}")
                                 # Continue processing other updates
                                 continue
-                        
-                        # Get new marker from last update
-                        if updates_response:
-                            last_update = updates_response[-1]
-                            if isinstance(last_update, dict):
-                                # Use timestamp or seq as marker
-                                msg = last_update.get("message", {})
-                                body = msg.get("body", {})
-                                self._polling_offset = body.get("seq") or last_update.get("timestamp")
+
+                    # Update marker from API response (not from update body!)
+                    if api_marker is not None:
+                        self._polling_offset = api_marker
                     
                 except Exception as e:
                     retry_count += 1
@@ -324,13 +323,6 @@ class Dispatcher(Router):
         try:
             event_type = update.event_type
             event = update.event
-
-            # Log ALL incoming updates for debugging
-            logger.info(f"🔍 Update received: type={event_type}, has_event={event is not None}")
-            if hasattr(update, 'payload') and update.payload:
-                logger.info(f"  payload={update.payload}")
-            if hasattr(update, 'user_id') and update.user_id:
-                logger.info(f"  user_id={update.user_id}")
 
             if not event_type or not event:
                 logger.warning(f"Unknown update type: {update}")

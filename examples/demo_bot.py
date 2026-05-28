@@ -32,7 +32,7 @@ import os
 import sys
 import fcntl
 
-from aioscam import Bot, Dispatcher, Router, Command, F, StateFilter, BotCommand, I18n
+from aioscam import Bot, Dispatcher, Router, Command, StartCommand, F, StateFilter, BotCommand, I18n
 from aioscam.enums import ParseMode, SenderAction
 from aioscam.fsm import State, StatesGroup
 from aioscam.utils.keyboard import KeyboardBuilder
@@ -369,6 +369,66 @@ admin_router = Router(name="admin")
 
 
 # ==================== Main Router ====================
+
+# Deep link handler for EXISTING users (repeat visits via /start <payload>)
+# MUST be registered BEFORE Command("start") to catch /start ref_123 first
+@main_router.message_created(StartCommand())
+async def on_repeat_deeplink(event, state):
+    """
+    Handle deep link for existing users.
+    When existing user clicks deep link, MAX sends message_created with text "/start <payload>".
+    StartCommand filter extracts payload from the text.
+    """
+    text = event.text or ''
+    payload = text[7:].strip() if text.startswith('/start ') else None
+
+    if not payload:
+        # Fallback — shouldn't happen with StartCommand filter
+        return await cmd_start(event, state)
+
+    decoded = decode_invite_payload(payload)
+
+    # Track user in database
+    chat_id = event.chat_id or 0
+    user_id = event.user_id or 0
+    first_name = getattr(event.from_user, 'first_name', '') or '' if event.from_user else ''
+    last_name = getattr(event.from_user, 'last_name', '') or '' if event.from_user else ''
+    locale = event.locale or "ru"
+
+    if HAS_SQLALCHEMY:
+        await db.add_or_update_user(
+            chat_id=chat_id, user_id=user_id,
+            first_name=first_name, last_name=last_name,
+            username=getattr(event.from_user, 'username', '') or '' if event.from_user else '',
+            locale=locale,
+        )
+
+    if decoded["valid"]:
+        inviter_name = decoded["full_name"]
+        inviter_chat_id = decoded["chat_id"]
+
+        text_msg = (
+            f"🎉 **Вы перешли по приглашению!**\n\n"
+            f"Вас пригласил(а) **{inviter_name}**\n\n"
+            f"Теперь вы тоже можете пригласить друзей!\n"
+            f"Нажмите кнопку **🔗 Пригласить друга** в главном меню."
+        )
+        await event.answer(text_msg)
+
+        # Notify inviter
+        if inviter_chat_id:
+            new_name = f"{first_name} {last_name}".strip() or "Пользователь"
+            await event.bot.send_message(
+                chat_id=inviter_chat_id, user_id=user_id,
+                text=f"🔔 **{new_name}** перешёл(а) по вашей ссылке! (повторный вход)",
+            )
+    else:
+        reason = decoded.get("reason", "unknown")
+        if reason in ("expired", "expired_session"):
+            await event.answer(f"⏰ **Ссылка устарела.**\n\nНо вы можете протестировать бота!")
+        else:
+            await event.answer(f"🔗 **Специальная ссылка** (decode failed: {reason})")
+
 
 @main_router.message_created(Command("start"))
 async def cmd_start(event, state):
@@ -1378,55 +1438,12 @@ async def handle_callback(event):
         await event.answer(f"🔘 Неизвестная кнопка: {callback_data}")
 
 
-# ==================== Deep Link Middleware ====================
-
-async def deep_link_middleware(event, handler):
-    """
-    Middleware to handle deep links for existing users.
-    When an existing user clicks on a deep link, MAX sends message_created with payload.
-    This middleware intercepts and processes the deep link before the normal message handler.
-    """
-    # Check if this update has a payload (deep link)
-    if hasattr(event, 'payload') and event.payload:
-        decoded = decode_invite_payload(event.payload)
-        if decoded["valid"]:
-            inviter_name = decoded["full_name"]
-            inviter_chat_id = decoded["chat_id"]
-
-            # Show welcome message with referrer info
-            text = (
-                f"🎉 **Вы перешли по приглашению!**\n\n"
-                f"Вас пригласил(а) **{inviter_name}**\n\n"
-                f"Теперь вы тоже можете пригласить друзей!\n"
-                f"Нажмите кнопку **🔗 Пригласить друга** в глав меню."
-            )
-            await event.answer(text)
-
-            # Notify the inviter
-            if inviter_chat_id:
-                user_info = event.from_user
-                if user_info:
-                    fn = getattr(user_info, 'first_name', '') or ''
-                    ln = getattr(user_info, 'last_name', '') or ''
-                    new_name = f"{fn} {ln}".strip() or "Новый пользователь"
-                    await event.bot.send_message(
-                        chat_id=inviter_chat_id,
-                        user_id=event.user_id,
-                        text=f"🔔 **{new_name}** перешёл(а) по вашей ссылке!",
-                    )
-            return  # Don't pass to normal handler
-
-    # No deep link — proceed normally
-    return await handler(event)
-
-
 # ==================== Setup Dispatcher ====================
 
 dp = Dispatcher()
 
 # Включаем middleware на роутер
 main_router.middleware()(cleanup_middleware)
-main_router.middleware()(deep_link_middleware)
 
 # Включаем роутеры
 dp.include_router(main_router)

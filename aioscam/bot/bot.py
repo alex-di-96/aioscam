@@ -1032,7 +1032,7 @@ class Bot:
         timeout: int = 30,
         marker: Optional[int] = None,
         types: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """
         Get updates (for polling mode)
 
@@ -1043,7 +1043,7 @@ class Bot:
             types: Update types filter
 
         Returns:
-            List of updates
+            Dict with "updates" (list) and "marker" (int)
         """
         result = await self.execute(GetUpdates(
             marker=marker,
@@ -1055,8 +1055,8 @@ class Bot:
         # Response format: {"updates": [...], "marker": 123}
         result = result or {}
         if isinstance(result, dict):
-            return result.get("updates", [])
-        return result if isinstance(result, list) else []
+            return {"updates": result.get("updates", []), "marker": result.get("marker")}
+        return {"updates": result if isinstance(result, list) else [], "marker": None}
     
     async def get_last_marker(self) -> Optional[int]:
         """
