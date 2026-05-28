@@ -54,7 +54,8 @@ except ImportError:
 DB_PATH = Path(__file__).parent / "demo_bot.db"
 DB_URL = f"sqlite+aiosqlite:///{DB_PATH}"
 
-Base = DeclarativeBase()
+class Base(DeclarativeBase):
+    pass
 
 class User(Base):
     """

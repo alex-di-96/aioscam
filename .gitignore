@@ -100,3 +100,9 @@ docs-web/
 *.pid
 .referrals.json
 nohup.out
+
+# ========================
+# Playwright output / screenshots
+# ========================
+output/
+.playwright-mcp/
