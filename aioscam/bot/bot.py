@@ -543,12 +543,19 @@ class Bot:
                 msg_body["format"] = format
             elif self.parse_mode:
                 msg_body["format"] = self.parse_mode.value
-            if keyboard is not None:
-                if hasattr(keyboard, 'to_dict'):
-                    msg_body["keyboard"] = keyboard.to_dict()
-                elif isinstance(keyboard, dict):
-                    msg_body["keyboard"] = keyboard
             body["message"] = msg_body
+
+        # Keyboard goes to TOP level of body (not inside message)
+        if keyboard is not None:
+            if hasattr(keyboard, 'to_dict'):
+                body["keyboard"] = keyboard.to_dict()
+            elif isinstance(keyboard, dict):
+                body["keyboard"] = keyboard
+
+        # Debug: log what we're sending
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"send_callback: body keys={list(body.keys())}, keyboard={'yes' if 'keyboard' in body else 'no'}")
 
         if notification is not None:
             body["notification"] = notification
