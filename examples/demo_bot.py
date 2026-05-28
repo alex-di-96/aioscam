@@ -243,6 +243,7 @@ class RegistrationState(StatesGroup):
     waiting_name = State()
     waiting_age = State()
     waiting_email = State()
+    waiting_phone = State()
 
 
 class QuizState(StatesGroup):
@@ -820,14 +821,30 @@ async def handle_contact(event):
                 last = max_info.get('last_name', '')
                 name = f"{first} {last}".strip()
 
-            if not phone:
-                phone = "Не указан"
-            else:
-                # Mask phone: show only last 4 digits
-                if len(phone) > 4:
-                    phone_display = f"...{phone[-4:]}"
-                else:
-                    phone_display = phone
+            phone_display = "Не указан"
+            if phone:
+                phone = phone.strip()
+                phone_display = f"...{phone[-4:]}" if len(phone) > 4 else phone
+
+            # If user is in registration waiting_phone state — complete registration
+            state = event.data.get('state')
+            if state:
+                current_state_name = await state.get_state()
+                if current_state_name == RegistrationState.waiting_phone.full_name:
+                    reg_data = await state.get_data()
+                    await state.set_state(None)
+                    await event.answer(
+                        "✅ **Регистрация завершена!**\n\n"
+                        f"👤 Имя: {reg_data.get('name', '')}\n"
+                        f"🔢 Возраст: {reg_data.get('age', '')}\n"
+                        f"📧 Email: {reg_data.get('email', '')}\n"
+                        f"📞 Телефон: `{phone_display}`\n\n"
+                        "⚠️ Мы не храним ваши персональные данные!\n"
+                        "Это демонстрация работы фреймворка.\n\n"
+                        "Спасибо за регистрацию! 🎉\n\n"
+                        "Отправьте /start для возврата в главное меню."
+                    )
+                    return
 
             await event.answer(
                 f"📱 **Контакт получен!**\n\n"
@@ -866,7 +883,7 @@ async def cmd_register(event, state):
     await state.set_state(RegistrationState.waiting_name)
     await event.answer(
         "📝 **Регистрация**\n\n"
-        "Шаг 1/3: Введите ваше имя:"
+        "Шаг 1/4: Введите ваше имя:"
     )
 
 
@@ -875,7 +892,7 @@ async def process_name(event, state):
     """Обработка имени"""
     await state.update_data(name=event.text)
     await state.set_state(RegistrationState.waiting_age)
-    await event.answer("✅ Имя сохранено!\n\nШаг 2/3: Введите ваш возраст:")
+    await event.answer("✅ Имя сохранено!\n\nШаг 2/4: Введите ваш возраст:")
 
 
 @main_router.message_created(StateFilter(RegistrationState.waiting_age))
@@ -889,30 +906,32 @@ async def process_age(event, state):
         
         await state.update_data(age=age)
         await state.set_state(RegistrationState.waiting_email)
-        await event.answer("✅ Возраст сохранен!\n\nШаг 3/3: Введите ваш email:")
+        await event.answer("✅ Возраст сохранен!\n\nШаг 3/4: Введите ваш email:")
     except ValueError:
         await event.answer("⚠️ Пожалуйста, введите число:")
 
 
 @main_router.message_created(StateFilter(RegistrationState.waiting_email))
 async def process_email(event, state):
-    """Обработка email"""
+    """Обработка email — после email запрашиваем телефон"""
     if "@" not in event.text:
         await event.answer("⚠️ Введите корректный email:")
         return
-    
+
     await state.update_data(email=event.text)
-    data = await state.get_data()
-    await state.set_state(None)
+    await state.set_state(RegistrationState.waiting_phone)
+
+    builder = KeyboardBuilder()
+    builder.request_contact("📱 Поделиться контактом")
+    kb = builder.build()
 
     await event.answer(
-        "✅ **Регистрация завершена!**\n\n"
-        f"👤 Имя: {data['name']}\n"
-        f"🔢 Возраст: {data['age']}\n"
-        f"📧 Email: {data['email']}\n\n"
-        "Спасибо за регистрацию! 🎉\n\n"
-        "Отправьте /start для возврата в главное меню."
+        "✅ Email сохранён!\n\n"
+        "Шаг 4/4: Поделитесь номером телефона:",
+        keyboard=kb.to_dict()
     )
+
+
 
 
 # ==================== Quiz Router (FSM) ====================
@@ -1330,7 +1349,7 @@ async def handle_callback(event):
             # EN: Hide keyboard (one_time)
             await event.hide_keyboard("📝 Регистрация")
             # 2. Отправляем новый ответ
-            await event.answer("📝 Начинаем регистрацию!\n\nШаг 1/3: Введите ваше имя:")
+            await event.answer("📝 Начинаем регистрацию!\n\nШаг 1/4: Введите ваше имя:")
 
         elif command == "quiz" and state:
             # RU: Начать викторину — редактировать сообщение с inline кнопками A/B/C/D
@@ -1384,14 +1403,20 @@ async def handle_callback(event):
         elif command == "settings":
             # RU: Открыть настройки — выбор языка с отметкой текущего
             # EN: Open settings — language selection with current locale checkmark
-            current_locale = event.data.get('locale', event.locale or 'ru')
+            saved = await state.get_data() if state else {}
+            current_locale = (
+                event.data.get('locale')
+                or saved.get('user_locale')
+                or event.locale
+                or 'ru'
+            )
             kb = _settings_keyboard(current_locale)
             await event.answer(
                 "⚙️ **Параметры**\n\n"
                 "Выберите язык интерфейса:\n"
                 "🇷🇺 Русский — по умолчанию\n"
                 "🇺🇸 English",
-                keyboard=kb.build(),
+                keyboard=kb.build().to_dict(),
             )
 
         elif command == "help":
@@ -1430,6 +1455,11 @@ async def handle_callback(event):
     elif callback_data.startswith("lang:"):
         locale = callback_data.split(":")[1]
         event.data['locale'] = locale
+
+        # Persist to FSM state so next settings open shows correct checkmark
+        if state:
+            await state.update_data(user_locale=locale)
+
         # Save to DB if user exists — RU: сохранить в БД если пользователь есть
         if HAS_SQLALCHEMY and event.user_id:
             await db.set_user_locale(event.user_id, locale)
@@ -1442,7 +1472,7 @@ async def handle_callback(event):
             "Выберите язык интерфейса:\n"
             "🇷🇺 Русский — по умолчанию\n"
             "🇺🇸 English",
-            keyboard=kb.build(),
+            keyboard=kb.build().to_dict(),
         )
 
     else:
