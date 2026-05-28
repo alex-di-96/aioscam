@@ -93,3 +93,10 @@ memory/
 max-sdk/
 EXTERNAL-ANALYTICS.md
 docs-web/
+
+# ========================
+# Runtime (bot demo)
+# ========================
+*.pid
+.referrals.json
+nohup.out

@@ -4,81 +4,58 @@ Async Python framework for building Max messenger bots, inspired by aiogram arch
 
 ## Version
 
-**v0.1.6** — Production Ready (2026-05-19)
+**v0.1.6.2** — Latest (2026-05-28)
 
-### Latest features
-- ✨ `format` parameter in `send_message()` and `edit_message()` — Markdown and HTML support
-- ✨ `Bot(parse_mode=ParseMode.MARKDOWN)` — default text formatting for all messages
-- ✨ `event.hide_keyboard()` — Telegram-style one_time_keyboard
-- ✨ `event.answer_and_hide_keyboard()` — answer with keyboard removal
-- ✅ Verified: **bold** `[links](url)` render correctly with `format:markdown`
-- ✅ Verified: `<b>bold</b> <i>italic</i> <a href="...">links</a>` render with `format:html`
+### Latest changes
+- ✅ **Rate Limiter** — token bucket, 429 retry, exponential backoff
+- ✅ **Methods API** — `Bot.execute(GetMe())`, `Bot.execute(SendMessage(...))`
+- ✅ **send_callback** — SDK-aligned (`message=`, `notification=`)
+- ✅ **Type dedup** — single source truth for User/Message/MessageBody
+- ✅ **EventContext** — `user_id`, `chat_id` convenience properties
+- ✅ **Examples** — 12 bots, all fixed and tested
 
 ## Features
 
-- 🚀 **Fully async** - Built on `asyncio` and `aiohttp`
-- 🎯 **aiogram-style API** - Familiar decorators and patterns
-- 🔄 **Router system** - Modular bot architecture with nesting support
-- 🎭 **Magic Filters** - Declarative event filtering (`F.text`, `F.callback.payload`)
-- 🔧 **Middleware** - Request/response processing pipeline
-- 📦 **FSM** - Built-in finite state machine with MemoryStorage
-- 🛡️ **StateGuard** - Blocks unauthorized commands/callbacks during active FSM states
-- 📱 **Contact & Location** - Inline buttons for requesting phone number and geolocation
-- ⌨️ **one_time_keyboard** - Auto-hide inline keyboards after button click (Telegram-style)
-- 📝 **Text Formatting** - Markdown (`**bold**`, `[link](url)`) and HTML (`<b>bold</b>`, `<i>italic</i>`, `<a href="...">link</a>`)
-- 📋 **Bot Commands Menu** - `set_my_commands()` + `set_bot_info()` for bot profile
-- 🔄 **Auto-cleanup** - Middleware-based message tracking + one_time_keyboard
-- 🗑️ **Message Management** - Delete sent messages
-- 🌐 **Webhook support** - aiohttp, FastAPI, Litestar
-- 📡 **Polling mode** - Long-polling with exponential backoff
-- 🔒 **Security** - Webhook secret token, circular router detection, race condition prevention
-- 📦 **Python 3.9-3.12** - Wide version support
-- 📚 **Full documentation** - RU + EN, integration guide
-- 🎨 **IDE support** - Type hints, py.typed, VSCode + PyCharm settings
+- 🚀 **Fully async** — Built on `asyncio` and `aiohttp`
+- 🎯 **aiogram-style API** — Familiar decorators and patterns
+- 🔄 **Router system** — Modular bot architecture with nesting support
+- 🎭 **Magic Filters** — Declarative event filtering (`F.text`, `F.callback.payload`)
+- 🔧 **Middleware** — Request/response processing pipeline
+- 📦 **FSM** — Built-in finite state machine with MemoryStorage
+- 🛡️ **StateGuard** — Blocks unauthorized commands/callbacks during active FSM states
+- 📱 **Contact & Location** — Inline buttons for requesting phone number and geolocation
+- 📝 **Text Formatting** — Markdown and HTML support
+- 📋 **Bot Commands Menu** — `set_my_commands()` + `set_bot_info()`
+- 🗑️ **Message Management** — Delete, pin, edit messages
+- 🌐 **Webhook support** — aiohttp, FastAPI, Litestar
+- 📡 **Polling mode** — Long-polling with exponential backoff
+- 🛡️ **Rate Limiter** — Centralized token bucket with 429 retry and exponential backoff
+- 🔒 **Security** — Webhook secret token, circular router detection
+- 📦 **Python 3.9-3.12** — Wide version support
+- 📚 **Full documentation** — RU + EN, integration guide
+- 🎨 **IDE support** — Type hints, py.typed
 
 ## Installation
 
-### TestPyPI (Testing)
+### From source (development)
 
 ```bash
-pip install --index-url https://test.pypi.org/simple/ \
-  --extra-index-url https://pypi.org/simple/ aioscam
+git clone https://github.com/alex-di-96/aioscam.git
+cd aioscam
+pip install -e .
 ```
 
-> ⚠️ Test version on TestPyPI. For production, install from source.
-
-### Basic installation
+### With optional dependencies
 
 ```bash
-pip install aioscam
-
 # With FastAPI webhook support
 pip install aioscam[fastapi]
 
 # With Litestar webhook support
 pip install aioscam[litestar]
 
-# Development mode
+# Development mode (pytest, ruff, mypy)
 pip install aioscam[dev]
-```
-
-### PyPI Status
-
-- **PyPI**: ✅ Published ([pypi.org/project/aioscam/](https://pypi.org/project/aioscam/))
-- **TestPyPI**: ✅ Published ([test.pypi.org/project/aioscam/](https://test.pypi.org/project/aioscam/))
-
-### Quick install
-
-```bash
-pip install aioscam
-```
-
-### From source
-
-```bash
-git clone https://github.com/alex-di-96/aioscam.git
-cd aioscam
-pip install -e .
 ```
 
 ## Quick Start
@@ -95,11 +72,12 @@ router = Router()
 
 @router.message_created(Command("start"))
 async def cmd_start(event):
-    await event.message.answer("Привет! Я эхо-бот. Напиши мне что-нибудь!")
+    await event.answer("Привет! Я эхо-бот. Напиши мне что-нибудь!")
 
 @router.message_created()
 async def echo_message(event):
-    await event.message.answer(event.message.body.text)
+    if event.message.has_text:
+        await event.answer(event.text)
 
 dp.include_router(router)
 
@@ -111,12 +89,41 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### With Magic Filters
+### With Rate Limiter
 
 ```python
-@router.message_created(F.message.body.text.func(lambda t: "привет" in t.lower()))
-async def handle_hello(event):
-    await event.message.answer("Привет! Как дела?")
+from aioscam import Bot
+from aioscam.limiter import RateLimitConfig
+
+# Strict mode for production (5 req/s, burst 10, 5 retries)
+bot = Bot(rate_limit=RateLimitConfig.strict())
+
+# Relaxed for development (30 req/s, burst 50)
+bot = Bot(rate_limit=RateLimitConfig.relaxed())
+
+# Custom settings
+bot = Bot(rate_limit=RateLimitConfig(
+    rate=10.0,    # requests per second
+    burst=20,     # max burst size
+    max_retries=3,
+    backoff_base=1.0,
+))
+```
+
+### Methods API
+
+```python
+from aioscam import Bot, GetMe, SendMessage
+
+bot = Bot()
+
+# Using method objects
+me = await bot.execute(GetMe())
+await bot.execute(SendMessage(
+    chat_id=event.chat_id,
+    text="Hello!",
+    format="markdown",
+))
 ```
 
 ### FSM Example
@@ -131,21 +138,29 @@ class MyState(StatesGroup):
 @router.message_created(Command("register"))
 async def cmd_register(event, state):
     await state.set_state(MyState.waiting_name)
-    await event.message.answer("Введите имя:")
+    await event.answer("Введите имя:")
 
 @router.message_created(MyState.waiting_name)
 async def process_name(event, state):
-    await state.update_data(name=event.message.body.text)
+    await state.update_data(name=event.text)
     await state.set_state(MyState.waiting_age)
-    await event.message.answer("Введите возраст:")
+    await event.answer("Введите возраст:")
 ```
 
-### Webhook mode (aiohttp)
+### Callback handling
 
 ```python
-async def main():
-    bot = Bot()
-    await dp.handle_webhook(bot=bot, host="0.0.0.0", port=8080)
+@router.callback_query()
+async def handle_callback(event):
+    # event.answer() — convenience wrapper
+    await event.answer("Button clicked!")
+
+    # Or use send_callback directly
+    await event.bot.send_callback(
+        callback_id=event.callback_id,
+        message="Response text",
+        notification="Popup alert",  # optional
+    )
 ```
 
 ## API Coverage
@@ -155,8 +170,8 @@ async def main():
 | Category | Methods |
 |----------|---------|
 | **Bot Info** | `get_me`, `get_me_from_chat`, `change_info` |
-| **Messages** | `send_message`, `edit_message`, `delete_message(message_id)`, `get_message`, `get_messages`, `pin_message`, `delete_pin_message`, `get_pin_message` |
-| **Callbacks/Actions** | `send_callback(callback_id, answer, ...)`, `send_action` |
+| **Messages** | `send_message`, `edit_message`, `delete_message`, `get_message`, `get_messages`, `pin_message`, `delete_pin_message`, `get_pin_message` |
+| **Callbacks/Actions** | `send_callback(callback_id, message=, notification=)`, `send_action` |
 | **Chats** | `get_chats`, `get_chat_by_id`, `get_chat_by_link`, `edit_chat`, `delete_chat`, `add_chat_members`, `remove_member_chat`, `add_list_admin_chat`, `remove_admin`, `get_chat_members`, `get_chat_member`, `get_list_admin_chat`, `delete_me_from_chat` |
 | **Updates** | `get_updates`, `get_last_marker` |
 | **Webhooks** | `subscribe_webhook`, `unsubscribe_webhook`, `delete_webhook`, `get_subscriptions` |
@@ -170,23 +185,20 @@ async def main():
 
 `CallbackButton`, `LinkButton`, `ChatButton`, `MessageButton`, `ClipboardButton`, `OpenAppButton`, `RequestContactButton`, `RequestGeoLocationButton`
 
-### Sender Actions (9 types)
-
-`typing`, `upload_photo`, `record_video`, `upload_video`, `record_audio`, `upload_audio`, `upload_document`, `finding_location`, `choosing_sticker`
-
 ## Project Structure
 
 ```
 aioscam/
-├── bot/              # Bot client (35 API methods)
-├── client/           # HTTP client (aiohttp wrapper)
+├── bot/              # Bot client (35+ API methods)
+├── client/           # HTTP client (aiohttp, rate-limited)
 ├── dispatcher/       # Dispatcher, Router, EventContext, StateGuard
-├── enums/            # 12 enumeration files
+├── enums/            # 15 enumeration files
 ├── exceptions/       # 12 exception classes
 ├── filters/          # BaseFilter, Command, Text, State, Magic Filters
 ├── fsm/              # State, StatesGroup, MemoryStorage, Scene
 ├── handler/          # MessageHandler, CallbackHandler, EventHandler
-├── methods/          # API method wrappers
+├── limiter/          # RateLimiter, RateLimitConfig
+├── methods/          # API method wrappers (GetMe, SendMessage, GetUpdates)
 ├── middleware/       # BaseMiddleware, MiddlewareManager
 ├── types/            # Pydantic models (User, Chat, Message, etc.)
 ├── utils/            # KeyboardBuilder, formatting, deep_linking
@@ -208,11 +220,30 @@ AIOSCAM_ENV=prod  # debug, test, prod
 # Run all tests
 python -m pytest tests/ -v
 
-# v0.1.5 feature tests (26/26 passing)
-python -m pytest tests/test_v015.py -v
+# Test rate limiter
+python -m pytest tests/test_rate_limiter.py -v
+
+# Test methods API
+python -m pytest tests/test_methods.py -v
 ```
 
-**Test Results**: 100/100 passing (100%)
+**Test Results**: 141/141 passing (100%)
+
+## Example Bots
+
+| File | Description |
+|------|-------------|
+| `examples/echo_bot.py` | Simple echo bot |
+| `examples/fsm_bot.py` | FSM registration flow |
+| `examples/keyboard_bot.py` | Inline keyboard demo |
+| `examples/middleware_bot.py` | Logging + timing middleware |
+| `examples/router_bot.py` | Multi-router architecture |
+| `examples/webhook_bot.py` | Webhook mode (aiohttp) |
+| `examples/deep_link_bot.py` | Deep links + referral |
+| `examples/demo_bot.py` | Full-featured demo (1000+ lines) |
+| `examples/rate_limited_bot.py` | Rate limiter demo |
+| `examples/methods_bot.py` | Methods API demo |
+| `examples/callback_bot.py` | send_callback demo |
 
 ## Deployment
 
