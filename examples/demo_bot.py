@@ -315,20 +315,38 @@ async def cmd_start(event, state):
     # Версия фреймворка
     from aioscam import __version__
 
-    # Создаем inline клавиатуру
+    # Создаем inline клавиатуру — Главное меню
+    # RU: Кнопки главного меню с основными функциями бота
+    # EN: Main menu buttons with core bot features
     builder = KeyboardBuilder(inline=True)
 
+    # 📝 Регистрация — FSM: 3-шаговая регистрация (имя, возраст, email)
+    # EN: Registration — FSM: 3-step registration (name, age, email)
     builder.callback("📝 Регистрация", "action:register")
+    # 🎯 Викторина — FSM: викторина с inline кнопками A/B/C/D (3 вопроса)
+    # EN: Quiz — FSM: quiz with inline A/B/C/D buttons (3 questions)
     builder.callback("🎯 Викторина", "action:quiz")
     builder.row()
+    # 💬 Обратная связь — FSM: рейтинг 1-5 + текстовый отзыв
+    # EN: Feedback — FSM: rating 1-5 + text feedback
     builder.callback("💬 Обратная связь", "action:feedback")
+    # 📊 Статистика — показать HTML-форматирование и версию фреймворка
+    # EN: Stats — show HTML formatting and framework version
     builder.callback("📊 Статистика", "action:stats")
     builder.row()
+    # 🔗 Пригласить друга — генерация диплинка для реферальной программы
+    # EN: Invite friend — generate deep link for referral program
     builder.callback("🔗 Пригласить друга", "action:invite")
     builder.row()
+    # ⚙️ Настройки — выбор языка (ru/en) для текущего сеанса
+    # EN: Settings — language selection (ru/en) for current session
     builder.callback("⚙️ Настройки", "action:settings")
+    # ❓ Помощь — справка по командам и возможностям фреймворка
+    # EN: Help — help on commands and framework capabilities
     builder.callback("❓ Помощь", "action:help")
     builder.row()
+    # ⏹️ Отмена — отмена текущей FSM операции
+    # EN: Cancel — cancel current FSM operation
     builder.callback("⏹️ Отмена", "action:cancel")
 
     keyboard = builder.build()
@@ -405,7 +423,7 @@ async def cmd_stats(event):
         f"📊 <b>Статистика AioScam Framework</b>\n\n"
         f"🤖 <b>Версия:</b> {__version__}\n"
         f"📦 <b>Модулей:</b> 68 файлов\n"
-        f"🧪 <b>Тестов:</b> 100/100 passed (100%)\n"
+        f"🧪 <b>Тестов:</b> 158/158 passed (100%)\n"
         f"🔒 <b>Security Score:</b> 9/10\n\n"
         f"<b>Реализовано:</b>\n"
         f"• 35 API методов Max\n"
@@ -524,14 +542,19 @@ async def _handle_invite(event):
 
 
 def _settings_keyboard(current_locale: str = "ru") -> KeyboardBuilder:
-    """Settings keyboard with language selection"""
+    """
+    RU: Клавиатура настроек — выбор языка (ru/en) с отметкой текущего
+    EN: Settings keyboard — language selection (ru/en) with current locale checkmark
+    """
     builder = KeyboardBuilder(inline=True)
-    # Highlight current locale with checkmark
+    # 🇷🇺 Русский — switch session locale to Russian
     ru_label = "🇷🇺 Русский ✅" if current_locale == "ru" else "🇷🇺 Русский"
+    # 🇬🇧 English — switch session locale to English (UK flag)
     en_label = "🇬🇧 English ✅" if current_locale == "en" else "🇬🇧 English"
     builder.callback(ru_label, "lang:ru")
     builder.callback(en_label, "lang:en")
     builder.row()
+    # 🔙 Назад — return to main menu (action:cancel resets state)
     builder.callback("🔙 Назад", "action:cancel")
     return builder
 
@@ -883,19 +906,30 @@ async def cmd_cancel(event, state):
 
 
 def _feedback_rating_keyboard() -> dict:
-    """Build feedback rating keyboard (1-5 with colors)"""
+    """
+    RU: Клавиатура рейтинга обратной связи — кнопки 1-5 с цветовыми индикаторами
+    EN: Feedback rating keyboard — buttons 1-5 with color indicators
+    """
     builder = KeyboardBuilder(inline=True)
+    # 🔴 1 — Poor rating (red)
     builder.callback("🔴 1", "feedback:1")
+    # 🟤 2 — Below average (brown)
     builder.callback("🟤 2", "feedback:2")
+    # 🟡 3 — Average (yellow)
     builder.callback("🟡 3", "feedback:3")
     builder.row()
+    # 🔵 4 — Good (blue)
     builder.callback("🔵 4", "feedback:4")
+    # 🟢 5 — Excellent (green)
     builder.callback("🟢 5", "feedback:5")
     return builder.build().to_dict()
 
 
 def _quiz_keyboard(question: int) -> dict:
-    """Build quiz answer keyboard for given question"""
+    """
+    RU: Клавиатура викторины — варианты ответа A/B/C/D для указанного вопроса
+    EN: Quiz keyboard — answer options A/B/C/D for given question
+    """
     builder = KeyboardBuilder(inline=True)
     builder.callback("A", f"quiz:{question}:A")
     builder.callback("B", f"quiz:{question}:B")
@@ -994,17 +1028,29 @@ async def handle_quiz_callback(event, state):
 
 @main_router.callback_query()
 async def handle_callback(event):
-    """Обработка callback запросов"""
+    """
+    RU: Главный обработчик callback-кнопок меню
+    EN: Main menu callback handler
+    """
     callback_data = event.callback_data or ""
     state = event.data.get('state')
 
+    # RU: Маппинг callback_id → действие
+    # EN: callback_id → action mapping
     callbacks = {
+        # action:register — запустить FSM регистрацию (3 шага)
         "action:register": ("register",),
+        # action:quiz — запустить викторину с inline кнопками
         "action:quiz": ("quiz",),
+        # action:feedback — запустить обратную связь (рейтинг + текст)
         "action:feedback": ("feedback",),
+        # action:stats — показать статистику в HTML-формате
         "action:stats": ("stats",),
+        # action:settings — открыть настройки (выбор языка ru/en)
         "action:settings": ("settings",),
+        # action:help — показать справку по командам
         "action:help": ("help",),
+        # action:cancel — отменить текущую FSM операцию
         "action:cancel": ("cancel",),
     }
 
@@ -1012,13 +1058,18 @@ async def handle_callback(event):
         command = callbacks[callback_data][0]
 
         if command == "register" and state:
+            # RU: Начать регистрацию — очистить FSM, запустить шаг 1 (имя)
+            # EN: Start registration — clear FSM, start step 1 (name)
             await state.set_state(RegistrationState.waiting_name)
             # 1. Убираем клавиатуру (одноразовая)
+            # EN: Hide keyboard (one_time)
             await event.hide_keyboard("📝 Регистрация")
             # 2. Отправляем новый ответ
             await event.answer("📝 Начинаем регистрацию!\n\nШаг 1/3: Введите ваше имя:")
 
         elif command == "quiz" and state:
+            # RU: Начать викторину — редактировать сообщение с inline кнопками A/B/C/D
+            # EN: Start quiz — edit message with inline A/B/C/D buttons
             await state.set_state(QuizState.question_1)
             saved_data = await state.get_data()
             quiz_msg_id = saved_data.get('prev_bot_msg_id')
@@ -1042,6 +1093,8 @@ async def handle_callback(event):
                 await event.answer("⚠️ Не удалось начать викторину.")
 
         elif command == "feedback" and state:
+            # RU: Начать обратную связь — показать рейтинг 1-5 с цветовыми кнопками
+            # EN: Start feedback — show rating 1-5 with color buttons
             saved_data = await state.get_data()
             feedback_msg_id = saved_data.get('prev_bot_msg_id')
             if feedback_msg_id:
@@ -1058,10 +1111,14 @@ async def handle_callback(event):
                 await event.answer("⚠️ Не удалось начать обратную связь.")
 
         elif command == "stats":
+            # RU: Показать статистику — HTML-форматирование, версия, API методы
+            # EN: Show stats — HTML formatting, version, API methods
             await event.hide_keyboard("📊 Статистика")
             await cmd_stats(event)
 
         elif command == "settings":
+            # RU: Открыть настройки — выбор языка с отметкой текущего
+            # EN: Open settings — language selection with current locale checkmark
             user_id = event.user_id or 0
             current_locale = event.data.get('locale', event.locale or 'ru')
             kb = _settings_keyboard(current_locale)
@@ -1075,10 +1132,14 @@ async def handle_callback(event):
             )
 
         elif command == "help":
+            # RU: Показать справку по командам
+            # EN: Show help on commands
             await event.hide_keyboard("📖 Справка")
             await cmd_help(event)
 
         elif command == "cancel":
+            # RU: Отменить FSM — сбросить состояние, скрыть клавиатуру
+            # EN: Cancel FSM — reset state, hide keyboard
             if state:
                 current = await state.get_state()
                 if current:
@@ -1093,17 +1154,20 @@ async def handle_callback(event):
                 await event.answer("❌ Операция отменена.")
 
         elif command == "invite":
+            # RU: Сгенерировать диплинк для реферальной программы
+            # EN: Generate deep link for referral program
             await event.hide_keyboard("🔗 Приглашение")
             await _handle_invite(event)
         else:
             await event.hide_keyboard()
             await event.answer(f"🔘 Нажата кнопка: {callback_data}")
 
-    # Language selection (outside main callbacks)
+    # RU: Переключение языка (lang:ru / lang:en) — вне основного меню
+    # EN: Language switching (lang:ru / lang:en) — outside main menu
     elif callback_data.startswith("lang:"):
         locale = callback_data.split(":")[1]
         event.data['locale'] = locale
-        # Save to DB if user exists
+        # Save to DB if user exists — RU: сохранить в БД если пользователь есть
         if HAS_SQLALCHEMY and event.user_id:
             await db.set_user_locale(event.user_id, locale)
 
