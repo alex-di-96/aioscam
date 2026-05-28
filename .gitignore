@@ -106,3 +106,8 @@ nohup.out
 # ========================
 output/
 .playwright-mcp/
+
+# ========================
+# Demo bot runtime
+# ========================
+examples/demo_bot.db
