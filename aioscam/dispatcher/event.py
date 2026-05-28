@@ -97,6 +97,15 @@ class EventContext:
         return None
 
     @property
+    def payload(self) -> Optional[str]:
+        """Get deep link payload (bot_started ?start= parameter)"""
+        if hasattr(self.event, 'payload'):
+            return self.event.payload
+        if isinstance(self.event, dict):
+            return self.event.get('payload')
+        return None
+
+    @property
     def user_id(self) -> Optional[int]:
         """Get user ID from event (convenience property)"""
         user = self.from_user
@@ -230,28 +239,9 @@ class EventContext:
         Returns:
             Sent message
         """
-        # Get recipient chat_id and sender user_id
-        chat_id: Optional[int] = None
-        user_id: Optional[int] = None
-
-        if self.from_user:
-            user = self.from_user
-            # User.id (with alias user_id for raw API)
-            if hasattr(user, 'id') and user.id is not None:
-                user_id = user.id
-            elif hasattr(user, 'user_id') and user.user_id is not None:
-                user_id = user.user_id
-            elif isinstance(user, dict):
-                user_id = user.get('id') or user.get('user_id')
-
-        if self.chat:
-            chat = self.chat
-            if hasattr(chat, 'chat_id'):
-                chat_id = chat.chat_id
-            elif hasattr(chat, 'id') and chat.id is not None:
-                chat_id = chat.id
-            elif isinstance(chat, dict):
-                chat_id = chat.get('chat_id') or chat.get('id')
+        # Use properties that already handle all fallback cases (incl. bot_started)
+        user_id = self.user_id
+        chat_id = self.chat_id
 
         if not user_id or not chat_id:
             raise ValueError(f"Cannot determine chat/user ID: chat_id={chat_id}, user_id={user_id}")

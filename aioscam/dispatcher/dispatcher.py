@@ -272,7 +272,6 @@ class Dispatcher(Router):
                             try:
                                 # Handle string updates
                                 if isinstance(update_data, str):
-                                    import json
                                     update_data = json.loads(update_data)
                                 
                                 logger.info(f"Raw update data: {update_data}")
@@ -348,25 +347,7 @@ class Dispatcher(Router):
             elif event_type == "message_edited":
                 await self.process_event('message_edited', context)
             elif event_type == "message_callback":
-                # Inject state for callbacks
-                chat_id = None
-                user_id = None
-                if hasattr(context, 'chat') and context.chat:
-                    chat = context.chat
-                    if hasattr(chat, 'chat_id'):
-                        chat_id = chat.chat_id
-                    elif isinstance(chat, dict):
-                        chat_id = chat.get('chat_id')
-                if hasattr(context, 'from_user') and context.from_user:
-                    user = context.from_user
-                    if hasattr(user, 'id') and user.id is not None:
-                        user_id = user.id
-                    elif hasattr(user, 'user_id') and user.user_id is not None:
-                        user_id = user.user_id
-                    elif isinstance(user, dict):
-                        user_id = user.get('user_id')
-                
-                context.data['state'] = StateContext(self.storage, chat_id, user_id)
+                # process_callback() handles state injection via _extract_chat_and_user_ids
                 await self.process_callback(context)
             elif event_type == "message_removed":
                 await self.process_event('message_removed', context)

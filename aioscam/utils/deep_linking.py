@@ -2,6 +2,8 @@
 Deep linking utilities
 """
 
+from urllib.parse import urlencode, parse_qs, urlparse
+
 
 def create_deep_link(bot_username: str, payload: str) -> str:
     """
@@ -56,21 +58,15 @@ def parse_deep_link(url: str) -> dict:
     
     if not url.startswith("https://max.ru/"):
         return result
-    
-    # Extract parts
-    path_query = url.replace("https://max.ru/", "")
-    parts = path_query.split("?", 1)
-    
-    if len(parts) == 2:
-        result["bot_username"] = parts[0]
-        query = parts[1]
-        
-        # Parse query parameters
-        params = dict(p.split("=") for p in query.split("&") if "=" in p)
-        
-        if "start" in params:
-            result["payload"] = params["start"]
-        if "add_to_group" in params:
-            result["group_id"] = int(params["add_to_group"])
-    
+
+    parsed = urlparse(url)
+    result["bot_username"] = parsed.path.lstrip("/")
+
+    params = {k: v[0] for k, v in parse_qs(parsed.query).items()}
+
+    if "start" in params:
+        result["payload"] = params["start"]
+    if "add_to_group" in params:
+        result["group_id"] = int(params["add_to_group"])
+
     return result

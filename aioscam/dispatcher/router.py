@@ -286,13 +286,24 @@ class Router:
             logger.debug(f"Added callback handler to {self.name}")
             return func
         return decorator
-    
+
+    def message_callback(self, *filters: BaseFilter) -> Callable:
+        """
+        Alias for callback_query — matches Max API event name 'message_callback'.
+
+        Usage:
+            @router.message_callback(F.callback.data.startswith("action:"))
+            async def handle_callback(event):
+                await event.answer("Clicked!")
+        """
+        return self.callback_query(*filters)
+
     # ==================== Event Handlers ====================
-    
+
     def on_event(self, event_type: str, *filters: BaseFilter) -> Callable:
         """
         Decorator for generic events
-        
+
         Usage:
             @router.on_event("bot_started")
             async def on_bot_started(event):
@@ -305,14 +316,6 @@ class Router:
             logger.debug(f"Added event handler for {event_type} to {self.name}")
             return func
         return decorator
-    
-    def bot_started(self, *filters: BaseFilter) -> Callable:
-        """Decorator for bot_started event"""
-        return self.on_event('bot_started', *filters)
-    
-    def bot_stopped(self, *filters: BaseFilter) -> Callable:
-        """Decorator for bot_stopped event"""
-        return self.on_event('bot_stopped', *filters)
     
     # ==================== Event Processing ====================
     

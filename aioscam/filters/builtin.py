@@ -53,7 +53,9 @@ class Command(BaseFilter):
             command = command_match.group(1).lower()
 
             if command in self.commands:
-                return FilterResult(passed=True, data={"command": command})
+                # Capture everything after the command name as args
+                args = text[command_match.end():].strip() or None
+                return FilterResult(passed=True, data={"command": command, "command_args": args})
 
             return FilterResult(passed=False)
         except Exception:
@@ -87,10 +89,25 @@ class StartCommand(BaseFilter):
             # Get payload from Update.payload (deep link ?start= parameter)
             payload = None
 
-            if hasattr(event, 'payload'):
+            # bot_started event: payload is a top-level field on the event/Update
+            if hasattr(event, 'payload') and event.payload:
                 payload = event.payload
-            elif hasattr(event, 'data') and isinstance(event.data, dict):
-                payload = event.data.get('payload')
+
+            # message_created event: /start <payload> sent as regular command on repeat visits
+            if not payload:
+                text = None
+                if hasattr(event, 'text'):
+                    text = event.text
+                elif hasattr(event, 'message') and event.message:
+                    msg = event.message
+                    if hasattr(msg, 'body') and msg.body:
+                        text = getattr(msg.body, 'text', None)
+                    elif isinstance(msg, dict):
+                        text = msg.get('body', {}).get('text')
+                if text:
+                    text = text.strip()
+                    if text.startswith('/start '):
+                        payload = text[7:].strip() or None
 
             if not payload:
                 return FilterResult(passed=False)

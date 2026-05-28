@@ -1,6 +1,18 @@
 # AioScam Roadmap
 
-## v0.1.6.2 — Current (2026-05-28)
+## v0.1.6.3 — Current (2026-05-28)
+
+✅ `EventContext.payload` — диплинк-пэйлоад доступен в хендлерах (`event.payload`)
+✅ `EventContext.answer()` — исправлен для `bot_started` событий (fallback на `user_id`/`chat_id`)
+✅ `Router.message_callback()` — добавлен алиас под официальное имя события Max API
+✅ Убрано дублирование `bot_started`/`bot_stopped` в Router
+✅ Убрана двойная инъекция `state` для `message_callback` в Dispatcher
+✅ `StartCommand` фильтр — теперь работает и для повторных входов через диплинк (`message_created: /start payload`)
+✅ `Command` фильтр — захватывает аргументы команды в `command_args`
+✅ `parse_deep_link` — переведён на `urllib.parse` (корректная обработка `=` в значениях)
+> Подробности: `docs/FIXES_DEEPLINK_2026-05-28.md`
+
+## v0.1.6.2 — (2026-05-28)
 
 ✅ Markdown/HTML formatting (`format` param on send_message/edit_message)
 ✅ `BotCommand` type + `set_my_commands()` — bot command menu

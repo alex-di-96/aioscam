@@ -74,9 +74,21 @@ async def handle_deep_link(event, user_id, chat_id):
     )
 
 
+@router.message_created(StartCommand())
+async def on_start_with_deeplink(event, start_payload: str = None):
+    """
+    Handle /start <payload> sent as a message on repeat deeplink visits.
+    Max API sends bot_started only once; subsequent deeplink clicks arrive here.
+    """
+    user_id = event.user_id or (event.from_user.id if event.from_user else "unknown")
+    chat_id = event.chat_id or user_id
+    payload = start_payload or event.payload or ""
+    await handle_deep_link(event, user_id, chat_id)
+
+
 @router.message_created(Command("start"))
 async def on_start(event):
-    """Handle /start command"""
+    """Handle plain /start command (no deeplink payload)"""
     user_id = event.user_id or (event.from_user.id if event.from_user else "unknown")
     chat_id = event.chat_id or user_id
 
