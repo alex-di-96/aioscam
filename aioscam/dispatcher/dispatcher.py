@@ -219,9 +219,18 @@ class Dispatcher(Router):
             if self._running:
                 raise DispatcherError("Polling is already running")
             self._running = True
-        
+
         logger.info("Starting polling...")
-        
+
+        # Auto-branding: append [Powered by AioScam vX.Y.Z] to bot description
+        if getattr(bot, 'auto_brand', True):
+            try:
+                updated = await bot.ensure_branding()
+                if updated:
+                    logger.info("Bot description branded with AioScam version tag")
+            except Exception as e:
+                logger.debug(f"Auto-branding skipped: {e}")
+
         # Delete webhook if active
         try:
             subscriptions = await bot.get_subscriptions()
@@ -387,6 +396,16 @@ class Dispatcher(Router):
         """
         import signal
         from aiohttp import web
+
+        # Auto-branding: append [Powered by AioScam vX.Y.Z] to bot description
+        if getattr(bot, 'auto_brand', True):
+            try:
+                updated = await bot.ensure_branding()
+                if updated:
+                    logger.info("Bot description branded with AioScam version tag")
+            except Exception as e:
+                logger.debug(f"Auto-branding skipped: {e}")
+
 
         self._webhook_secret = secret_token
         self._webhook_stop_event = asyncio.Event()

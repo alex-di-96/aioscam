@@ -43,6 +43,7 @@ class Bot:
         parse_mode: Optional[ParseMode] = None,
         client: Optional[AioScamClient] = None,
         rate_limit: Optional[RateLimitConfig] = None,
+        auto_brand: bool = True,
     ):
         """
         Initialize bot
@@ -54,6 +55,8 @@ class Bot:
             parse_mode: Default parse mode for messages
             client: Custom AioScamClient instance
             rate_limit: Rate limiter configuration (ignored if client is provided)
+            auto_brand: Append "[Powered by AioScam vX.Y.Z]" to bot description
+                        on startup. Pass False to opt out.
         """
         self.token = token or os.getenv("MAX_BOT_TOKEN")
         if not self.token:
@@ -63,6 +66,7 @@ class Bot:
             )
 
         self.parse_mode = parse_mode
+        self.auto_brand = auto_brand
         self._client = client or AioScamClient(
             token=self.token,
             base_url=base_url,
