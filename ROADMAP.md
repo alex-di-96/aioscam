@@ -131,6 +131,20 @@
 - [ ] Sticker/animation поддержка
 - [ ] AI агенты — интеграция с LLM (OpenAI, Claude, GigaChat) для умных ответов в ботах
 
+### Technical Debt — минимум зависимостей
+**Принцип:** тащить как можно меньше зависимостей — каждая лишняя зависимость = риск для пользователей
+
+- [ ] **`python-dotenv`** — убрать побочный эффект `load_dotenv()` на уровне модуля в `aioscam/config.py:18`. Варианты:
+  - Ленивая загрузка внутри `Config.__init__()` — пользователь сам решает
+  - Убрать совсем — пользователь вызывает `load_dotenv()` если нужно
+  - Сделать optional dependency: `pip install aioscam[dotenv]`
+- [ ] **Аудит зависимостей** — проверить каждую: действительно ли нужна? Есть ли stdlib аналог?
+  - `aiohttp` ✅ — нужен (async HTTP)
+  - `aiofiles` ✅ — нужен (async file I/O для I18n)
+  - `pydantic` ✅ — нужен (валидация типов)
+  - `magic-filter` ✅ — нужен (aiogram-style фильтры)
+  - `python-dotenv` ⚠️ — сомнительно, можно `os.getenv()` + пользователь сам загружает
+
 ### Community
 - [ ] ☕ **Buy me a cookie** — добавить Boosty/Patreon ссылку в README ✅ (done)
 - [ ] GitHub Sponsors
