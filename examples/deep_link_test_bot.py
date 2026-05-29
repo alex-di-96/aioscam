@@ -16,7 +16,9 @@ async def on_started(event, state):
     if event.payload:
         await event.answer(f"Deep link received: {event.payload}")
     else:
-        await event.answer("Hello! Click https://max.ru/id3900000111_bot?start=test123")
+        me = await event.bot.get_me()
+        username = me.get('username', 'your_bot')
+        await event.answer(f"Hello! Click https://max.ru/{username}?start=test123")
 
 @router.message_created()
 async def on_message(event):

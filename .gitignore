@@ -111,3 +111,8 @@ output/
 # Demo bot runtime
 # ========================
 examples/demo_bot.db
+.claude/
+
+# Internal docs (not for GitHub)
+PUBLISHING.md
+docs/MAX_API_CHEATSHEET.md
