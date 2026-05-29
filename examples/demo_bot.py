@@ -630,7 +630,7 @@ async def cmd_help(event):
         f"Powered by [aLex Di](https://github.com/alex-di-96)"
     )
 
-    await event.answer(help_text, format="markdown")
+    await event.answer(help_text, format="markdown", keyboard=_back_to_menu_keyboard())
 
 
 @main_router.message_created(Command("stats"))
@@ -675,7 +675,7 @@ async def cmd_stats(event):
         f"<b>Отправьте</b> /start <b>для начала</b>"
     )
 
-    await event.answer(stats_text, format="html")
+    await event.answer(stats_text, format="html", keyboard=_back_to_menu_keyboard())
 
 
 @main_router.message_created(Command("contact"))
@@ -765,8 +765,20 @@ async def _handle_invite(event):
         f"📬 **Ваша персональная ссылка:**\n\n"
         f"`{invite_link}`\n\n"
         f"Поделитесь ей с друзьями! Когда они перейдут по ссылке,\n"
-        f"бот узнает что их пригласили именно вы."
+        f"бот узнает что их пригласили именно вы.\n\n"
+        f"Отправьте /start для возврата в главное меню.",
+        keyboard=_back_to_menu_keyboard(),
     )
+
+
+def _back_to_menu_keyboard() -> dict:
+    """
+    RU: Inline-клавиатура с кнопкой возврата в главное меню
+    EN: Inline keyboard with "Back to menu" button
+    """
+    builder = KeyboardBuilder(inline=True)
+    builder.callback("↩️ В главное меню", "action:start_menu")
+    return builder.build().to_dict()
 
 
 def _settings_keyboard(current_locale: str = "ru") -> KeyboardBuilder:
@@ -1222,7 +1234,9 @@ async def process_feedback(event, state):
     await event.answer(
         "✅ Спасибо за ваш отзыв!\n\n"
         f"Мы получили: \"{event.text[:50]}...\"\n\n"
-        "Мы обязательно рассмотрим его! 🙏"
+        "Мы обязательно рассмотрим его! 🙏\n\n"
+        "Отправьте /start для возврата в главное меню.",
+        keyboard=_back_to_menu_keyboard(),
     )
 
 
@@ -1255,7 +1269,8 @@ async def process_feedback_text(event, state):
         f"Вы оценили работу AioScam на **{rating}/5**\n\n"
         f"Ваш комментарий: \"{event.text[:100]}...\"\n\n"
         "Мы обязательно учтём ваше мнение! 🙏\n\n"
-        "Отправьте /start для начала"
+        "Отправьте /start для возврата в главное меню.",
+        keyboard=_back_to_menu_keyboard(),
     )
 
 @main_router.message_created(Command("cancel"))
@@ -1265,9 +1280,16 @@ async def cmd_cancel(event, state):
 
     if current_state:
         await state.set_state(None)
-        await event.answer("❌ Операция отменена.\n\nИспользуйте /start для начала.")
+        await event.answer(
+            "❌ Операция отменена.\n\n"
+            "Отправьте /start для возврата в главное меню.",
+            keyboard=_back_to_menu_keyboard(),
+        )
     else:
-        await event.answer("ℹ️ У вас нет активной операции.")
+        await event.answer(
+            "ℹ️ У вас нет активной операции.",
+            keyboard=_back_to_menu_keyboard(),
+        )
 
 
 # ==================== Catch-All Message Handler (Deep Link Debug) ====================
@@ -1614,13 +1636,23 @@ async def handle_callback(event):
                 if current:
                     await state.set_state(None)
                     await event.hide_keyboard("⏹️ Отмена")
-                    await event.answer("❌ Операция отменена.")
+                    await event.answer(
+                        "❌ Операция отменена.\n\n"
+                        "Отправьте /start для возврата в главное меню.",
+                        keyboard=_back_to_menu_keyboard(),
+                    )
                 else:
                     await event.hide_keyboard()
-                    await event.answer("ℹ️ У вас нет активной операции.")
+                    await event.answer(
+                        "ℹ️ У вас нет активной операции.",
+                        keyboard=_back_to_menu_keyboard(),
+                    )
             else:
                 await event.hide_keyboard()
-                await event.answer("❌ Операция отменена.")
+                await event.answer(
+                    "❌ Операция отменена.",
+                    keyboard=_back_to_menu_keyboard(),
+                )
 
         elif command == "invite":
             # RU: Сгенерировать диплинк для реферальной программы
@@ -1728,9 +1760,14 @@ async def main():
     
     # Register bot commands (shown in menu button)
     commands = [
-        BotCommand(name="start", description="Запустить бота"),
+        BotCommand(name="start", description="Главное меню"),
         BotCommand(name="help", description="Справка по командам"),
         BotCommand(name="stats", description="Статистика фреймворка"),
+        BotCommand(name="register", description="Регистрация (4 шага)"),
+        BotCommand(name="quiz", description="Викторина (3 вопроса)"),
+        BotCommand(name="feedback", description="Обратная связь"),
+        BotCommand(name="contact", description="Поделиться контактом"),
+        BotCommand(name="cancel", description="Отменить операцию"),
     ]
     await bot.set_my_commands(commands)
     print(f"✅ Зарегистрировано {len(commands)} команд: {[c.name for c in commands]}")
