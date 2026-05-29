@@ -38,7 +38,8 @@
 ✅ Phone masking — показ только последние 4 цифры (`...0279`)
 ✅ Privacy notice — "Мы не храним и не собираем ваши персональные данные!"
 ✅ `/start` подсказка — после регистрации, викторины, обратной связи
-❌ "⚙️ Параметры" inline keyboard — не показывает кнопки (открытый баг, требует исследования)
+✅ **"⚙️ Параметры" inline keyboard** — работает через `event.answer(keyboard=kb.build())`
+  - 🇷🇺 Русский ✅ / 🇺🇸 English — переключение + галочка (подтверждено 2026-05-29 через Playwright)
 
 ### demo_bot.py — Image FSM
 ✅ `ImageState` с состоянием `waiting_image`
@@ -52,7 +53,7 @@
 ### demo_bot.py — Параметры / Локаль
 ✅ Исправлена смена языка (`kb.build()` → `event.answer()` вместо `send_callback()`)
 ✅ Локаль сохраняется в FSM state (`user_locale`) — не сбрасывается между запросами
-❌ Inline keyboard при открытии параметров — не работает (открытый баг)
+✅ Inline keyboard при открытии параметров — работает (подтверждено 2026-05-29)
 
 ### Тесты
 ✅ 211 passed, 5 failed (integration tests) — +53 новых: type detection, FSM, PIL, temp paths, methods

@@ -165,19 +165,16 @@ body["message"]["keyboard"] = keyboard.to_dict()  # inside message
 **Фикс:** Заменено на `event.answer()` который отправляет НОВОЕ сообщение с inline клавиатурой.
 Также `kb.to_dict()` → `kb.build()` — правильный метод для KeyboardBuilder.
 
-### ❌ Открытые баги
+### ~~❌ Открытые баги~~ → ✅ Закрыто 2026-05-29
 
-#### "⚙️ Параметры" inline keyboard не работает
-**Симптом:** Нажатие "Параметры" показывает текст, но inline кнопки (🇷🇺/🇺🇸) не отображаются.
-**Исследовано:**
-- `event.answer(keyboard=kb.build())` — keyboard в event.answer не работает?
-- `send_callback(keyboard=kb.build())` — keyboard на TOP уровне body — не работает
-- Playwright конфликтует с bot polling (один API token) — callback events не доходят до бота
-**Гипотезы:**
-1. MAX API `answers` endpoint не поддерживает `keyboard` поле в body
-2. Нужно использовать `attachments` формат для inline keyboard (как в `send_message`)
-3. `event.answer()` не пробрасывает `keyboard` параметр в API
-**Требуется:** Изучить OpenAPI спецификацию MAX API для `/answers` endpoint
+#### "⚙️ Параметры" inline keyboard
+**Статус:** ✅ РАБОТАЕТ (подтверждено через Playwright 2026-05-29)
+**Корень проблемы:** Бот умирал из-за shell closing (`> /tmp/demo_bot.log 2>&1 &` + exit shell).
+**Решение:** Запуск через `is_background: true` (background shell) вместо `&` + redirect.
+**Проверка:**
+- ⚙️ Параметры → показывает "Выберите язык" + 🇷🇺 Русский ✅ / 🇺🇸 English / 🔙 Назад
+- Клик 🇺🇸 English → "✅ Язык изменён на English" + галочка на English ✅
+- Клик 🔙 Назад → возврат в главное меню
 
 ---
 
