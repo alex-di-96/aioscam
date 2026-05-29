@@ -584,10 +584,6 @@ async def cmd_start(event, state):
     # ❓ Помощь — справка по командам и возможностям фреймворка
     # EN: Help — help on commands and framework capabilities
     builder.callback("❓ Помощь", "action:help")
-    builder.row()
-    # ⏹️ Отмена — отмена текущей FSM операции
-    # EN: Cancel — cancel current FSM operation
-    builder.callback("⏹️ Отмена", "action:cancel")
 
     keyboard = builder.build()
 
