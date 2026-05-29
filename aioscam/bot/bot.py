@@ -43,7 +43,7 @@ class Bot:
         parse_mode: Optional[ParseMode] = None,
         client: Optional[AioScamClient] = None,
         rate_limit: Optional[RateLimitConfig] = None,
-        auto_brand: bool = False,
+        auto_brand: bool = True,
     ):
         """
         Initialize bot
@@ -56,7 +56,7 @@ class Bot:
             client: Custom AioScamClient instance
             rate_limit: Rate limiter configuration (ignored if client is provided)
             auto_brand: Append "[Powered by AioScam vX.Y.Z]" to bot description
-                        on startup. Pass True to opt in (disabled by default).
+                        on startup. Pass False to opt out.
         """
         self.token = token or os.getenv("MAX_BOT_TOKEN")
         if not self.token:
@@ -1081,30 +1081,6 @@ class Bot:
 
         await self.set_bot_info(description=new_desc)
         # Invalidate cached me so next get_me() reflects update
-        self._me = None
-        return True
-
-    async def _remove_branding(self) -> bool:
-        """
-        Remove "[Powered by AioScam...]" tag from bot description.
-
-        Returns:
-            True if description was updated, False if no branding found
-        """
-        tag_prefix = "[Powered by AioScam"
-
-        me = await self.get_me()
-        current_desc = me.get("description", "") or ""
-
-        # Check if any branding exists
-        lines = current_desc.split("\n")
-        clean_lines = [l for l in lines if not l.strip().startswith(tag_prefix)]
-
-        if len(clean_lines) == len(lines):
-            return False  # No branding found
-
-        new_desc = "\n".join(clean_lines).rstrip()
-        await self.set_bot_info(description=new_desc)
         self._me = None
         return True
 
