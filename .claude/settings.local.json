@@ -12,7 +12,8 @@
       "Bash(venv/bin/python3 *)",
       "Bash(venv/bin/pip install *)",
       "Bash(venv/bin/pip show *)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(git *)"
     ]
   }
 }

@@ -182,15 +182,38 @@ class Database:
         self.session_factory = None
 
     async def init(self):
-        """Initialize database"""
+        """Initialize database with auto-recovery on corruption"""
         if not HAS_SQLALCHEMY:
             logger.info("Database: SQLAlchemy not available, skipping")
             return
-        self.engine = create_async_engine(DB_URL, echo=False)
-        self.session_factory = async_sessionmaker(self.engine, class_=AsyncSession)
-        async with self.engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info(f"Database: initialized ({DB_PATH})")
+        
+        try:
+            self.engine = create_async_engine(DB_URL, echo=False)
+            self.session_factory = async_sessionmaker(self.engine, class_=AsyncSession)
+            async with self.engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info(f"Database: initialized ({DB_PATH})")
+        except Exception as e:
+            logger.warning(f"Database: initialization failed ({e}), attempting recovery...")
+            # Close engine if it was created
+            if self.engine:
+                await self.engine.dispose()
+            
+            # Delete corrupted database file
+            if DB_PATH.exists():
+                try:
+                    DB_PATH.unlink()
+                    logger.info(f"Database: deleted corrupted file {DB_PATH}")
+                except Exception as del_err:
+                    logger.error(f"Database: failed to delete {DB_PATH}: {del_err}")
+                    raise
+            
+            # Recreate database
+            self.engine = create_async_engine(DB_URL, echo=False)
+            self.session_factory = async_sessionmaker(self.engine, class_=AsyncSession)
+            async with self.engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info(f"Database: recreated ({DB_PATH})")
 
     async def add_or_update_user(self, chat_id, user_id, first_name="", last_name="", username="", locale="ru"):
         """Add new user or update existing (tracks new users only)"""
