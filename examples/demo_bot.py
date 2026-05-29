@@ -1209,7 +1209,8 @@ async def quiz_q3(event, state):
         f"🎯 **Результаты викторины**\n\n"
         f"{result_text}\n\n"
         f"Ваш счет: **{score}/3**\n\n"
-        "Отправьте /start для возврата в главное меню."
+        "Отправьте /start для возврата в главное меню.",
+        keyboard=_back_to_menu_keyboard(),
     )
 
 
@@ -1504,6 +1505,7 @@ async def handle_quiz_callback(event, state):
         await event.bot.edit_message(
             message_id=msg_id,
             text=f"🎯 **Результаты викторины**\n\n{result}\n\nВаш счет: **{new_score}/3**\n\nОтправьте /start для возврата в главное меню.",
+            keyboard=_back_to_menu_keyboard(),
         )
 
 
