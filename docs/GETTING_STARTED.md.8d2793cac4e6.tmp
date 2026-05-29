@@ -66,28 +66,21 @@ bot = Bot(timeout=60)
 #### Bot Methods
 
 - `get_me()` - Get bot information
-- `send_message(chat_id, text, keyboard, format)` - Send text message
+- `send_message(chat_id, text)` - Send text message
 - `edit_message(chat_id, message_id, text)` - Edit message
 - `delete_message(message_id)` - Delete message (matches Go SDK)
 - `get_message(message_id)` - Get single message
 - `get_messages(chat_id, limit, offset)` - Get messages list
 - `pin_message(chat_id, message_id)` - Pin message
 - `delete_pin_message(message_id)` - Unpin message
-- `send_callback(callback_id, message, notification, keyboard)` - Answer callback (with optional inline keyboard)
+- `send_callback(callback_id, answer, message_id, show_alert)` - Answer callback
 - `send_action(chat_id, action)` - Send typing indicator
-- `send_photo(chat_id, photo, caption)` - Send photo (file or URL)
-- `send_video(chat_id, video, caption)` - Send video
-- `send_audio(chat_id, audio, caption)` - Send audio
-- `send_document(chat_id, document, caption)` - Send document
-- `send_media(chat_id, attachment)` - Send any media type
-- `download_file(path, url, token)` - Download file to disk
-- `download_file_bytes(url, token)` - Download file to memory
 - `get_chats()` - Get all chats
 - `get_chat_by_id(chat_id)` - Get chat info
 - `edit_chat(chat_id, title, description)` - Edit chat
 - `add_members_chat(chat_id, user_ids)` - Add members
 - `remove_member_chat(chat_id, user_id)` - Remove member
-- `get_updates(marker, limit, timeout)` - Get updates (polling)
+- `get_updates(offset, limit, timeout)` - Get updates (polling)
 - `subscribe_webhook(url)` - Subscribe webhook
 - `unsubscribe_webhook()` - Unsubscribe webhook
 
@@ -187,13 +180,13 @@ async def cmd_start(event, state):
 
 @router.message_created(MyState.step1)
 async def step1_handler(event, state):
-    await state.update_data(name=event.text)
+    await state.update_data(name=event.message.text)
     await state.set_state(MyState.step2)
     await event.answer("Step 2: Enter age")
 
 @router.message_created(MyState.step2)
 async def step2_handler(event, state):
-    await state.update_data(age=event.text)
+    await state.update_data(age=event.message.text)
     data = await state.get_data()
     await state.set_state(None)  # Clear state
     
@@ -267,10 +260,10 @@ async def cmd_menu(event):
 ### Callback Handler
 
 ```python
-@router.message_callback()
+@router.callback_query()
 async def handle_callback(event):
-    data = event.callback.payload  # callback data string
-
+    data = event.callback.data
+    
     if data == "action:stats":
         await event.answer("📊 Statistics")
     elif data == "action:settings":
@@ -346,57 +339,22 @@ except NetworkError as e:
 
 ### Events
 
-- `bot_started` - Bot started (also handles deep links via `event.payload`)
+- `bot_started` - Bot started
 - `bot_stopped` - Bot stopped
 - `message_created` - New message
 - `message_edited` - Message edited
-- `message_callback` - Button clicked (use `@router.message_callback()`)
-
-## Deep Links
-
-```python
-from aioscam import StartCommand
-
-# Handle first-time bot start with payload (deep link)
-@router.bot_started()
-async def on_bot_started(event, state):
-    if event.payload:
-        await event.answer(f"Welcome! Payload: {event.payload}")
-    else:
-        await event.answer("Welcome!")
-
-# Handle repeat visits via /start <payload> (existing users)
-@router.message_created(StartCommand())
-async def on_repeat_deeplink(event, state):
-    payload = event.command_args
-    if payload:
-        await event.answer(f"Welcome back! Payload: {payload}")
-```
-
-> **Note:** `StartCommand()` handlers MUST be registered BEFORE `Command("start")`.
-> See `docs/FIXES_DEEPLINK_2026-05-28.md` for full deep link pattern.
+- `message_callback` - Button clicked
 
 ## Examples
 
-See `examples/` directory (15 bots):
+See `examples/` directory:
 
-| File | Description |
-|------|-------------|
-| `demo_bot.py` | Full framework demo (1783 lines) — all features |
-| `echo_bot.py` | Simple echo bot |
-| `fsm_bot.py` | Registration with FSM |
-| `callback_bot.py` | Callback API + inline keyboards |
-| `deep_link_bot.py` | Deep links with referral system |
-| `deep_link_test_bot.py` | Deep link debug/logging |
-| `i18n_bot.py` | Internationalization (ru/en) |
-| `keyboard_bot.py` | Keyboards and buttons |
-| `media_bot.py` | Photo/video/audio/document handling |
-| `methods_bot.py` | Structured API methods (BaseMethod) |
-| `middleware_bot.py` | Logging and timing middleware |
-| `rate_limited_bot.py` | Token bucket rate limiting |
-| `router_bot.py` | Multiple routers and filtering |
-| `run_bot.py` | Production-ready launcher |
-| `webhook_bot.py` | Webhook mode with aiohttp |
+- `echo_bot.py` - Simple echo bot
+- `fsm_bot.py` - Registration with FSM
+- `middleware_bot.py` - Middleware usage
+- `keyboard_bot.py` - Keyboards and buttons
+- `webhook_bot.py` - Webhook mode
+- `router_bot.py` - Multiple routers
 
 ## License
 

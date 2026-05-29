@@ -113,3 +113,77 @@ if state:
 ### Открытые вопросы:
 - При `waiting_phone` + текстовое сообщение (не контакт) — нет напоминания. Рассмотреть добавление хендлера с `StateFilter(waiting_phone)` ДО `handle_contact` (нужна реорганизация порядка в файле).
 - Locale из DB при открытии Settings (сейчас читаем из FSM state, а не из DB) — при рестарте бота FSM в памяти сбрасывается. Если SQLAlchemy включён — можно добавить `db.get_user_locale(user_id)` вызов.
+
+---
+
+## Сессия 2 — UX fixes (коммиты df1e448, b9566d4, e7b902d)
+
+### Изменения
+
+#### 1. "Настройки" → "Параметры"
+**Файл:** `examples/demo_bot.py`
+**Причина:** Кнопка "⚙️ Настройки" в клавиатуре бота коллидировала с "Настройки" в sidebar MAX мессенджера. При клике Playwright срабатывал sidebar, не кнопка бота.
+**Фикс:** Переименована в "⚙️ Параметры", callback `action:settings` сохранён.
+
+#### 2. `Bot.send_callback()` — keyboard параметр
+**Файл:** `aioscam/bot/bot.py`
+**Что:** Добавлен параметр `keyboard: Optional[Any]` в `send_callback()`.
+**Keyboard размещается на TOP уровне body** (не внутри `message`):
+```python
+# Правильно:
+body["keyboard"] = keyboard.to_dict()  # TOP level
+
+# Неправильно (было):
+body["message"]["keyboard"] = keyboard.to_dict()  # inside message
+```
+
+#### 3. Phone masking
+**Файл:** `examples/demo_bot.py` → `handle_contact()`
+Телефон маскируется — показываются только последние 4 цифры:
+```
+📞 Телефон: `...0279`
+```
+
+#### 4. Privacy notice
+**Файл:** `examples/demo_bot.py` → `handle_contact()`
+Добавлено предупреждение после контакта:
+```
+⚠️ Мы не храним и не собираем ваши персональные данные!
+Это лишь демонстрация работы фреймворка.
+```
+
+#### 5. `/start` подсказки
+**Файл:** `examples/demo_bot.py`
+После завершения FSM (регистрация, викторина, обратная связь) добавлена подсказка:
+```
+Отправьте /start для возврата в главное меню.
+```
+
+#### 6. Settings: `send_callback()` → `event.answer()`
+**Файл:** `examples/demo_bot.py`
+**Проблема:** `send_callback()` обновляет/скрывает текущее сообщение с кнопкой — НЕ создаёт новое.
+**Фикс:** Заменено на `event.answer()` который отправляет НОВОЕ сообщение с inline клавиатурой.
+Также `kb.to_dict()` → `kb.build()` — правильный метод для KeyboardBuilder.
+
+### ❌ Открытые баги
+
+#### "⚙️ Параметры" inline keyboard не работает
+**Симптом:** Нажатие "Параметры" показывает текст, но inline кнопки (🇷🇺/🇺🇸) не отображаются.
+**Исследовано:**
+- `event.answer(keyboard=kb.build())` — keyboard в event.answer не работает?
+- `send_callback(keyboard=kb.build())` — keyboard на TOP уровне body — не работает
+- Playwright конфликтует с bot polling (один API token) — callback events не доходят до бота
+**Гипотезы:**
+1. MAX API `answers` endpoint не поддерживает `keyboard` поле в body
+2. Нужно использовать `attachments` формат для inline keyboard (как в `send_message`)
+3. `event.answer()` не пробрасывает `keyboard` параметр в API
+**Требуется:** Изучить OpenAPI спецификацию MAX API для `/answers` endpoint
+
+---
+
+## Файлы изменены (все сессии)
+
+| Файл | Изменение |
+|------|-----------|
+| `aioscam/bot/bot.py` | `send_callback()` + keyboard param + logging |
+| `examples/demo_bot.py` | bug fixes + phone step + UX fixes + /start prompts |

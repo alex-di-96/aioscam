@@ -24,6 +24,22 @@
 ✅ Sticker — только приём (API не позволяет боту отправлять стикеры)
 ✅ Новая зависимость: `aiofiles>=23.0.0`
 
+### Deep links (подтверждено 2026-05-28)
+✅ `bot_started` + `payload` работает для ВСЕХ пользователей (новые + существующие)
+✅ Polling marker fix — `Bot.get_updates()` использует `marker` из API, не `body.seq`
+✅ `StartCommand` фильтр — fallback для `/start <payload>` из `message_created`
+✅ Obfuscation: Caesar cipher + MD5 hash (уровень demo_bot, не фреймворк)
+✅ Referral system — `encode_invite_payload()` / `decode_invite_payload()`
+> Подробности: `docs/FIXES_DEEPLINK_2026-05-28.md`
+
+### demo_bot.py — UX fixes (коммит df1e448+)
+✅ "⚙️ Настройки" → "⚙️ Параметры" — убрана коллизия с sidebar MAX мессенджера
+✅ `Bot.send_callback()` — добавлен `keyboard` параметр (inline keyboard support)
+✅ Phone masking — показ только последние 4 цифры (`...0279`)
+✅ Privacy notice — "Мы не храним и не собираем ваши персональные данные!"
+✅ `/start` подсказка — после регистрации, викторины, обратной связи
+❌ "⚙️ Параметры" inline keyboard — не показывает кнопки (открытый баг, требует исследования)
+
 ### demo_bot.py — Image FSM
 ✅ `ImageState` с состоянием `waiting_image`
 ✅ Кнопка `🖼️ Изображение` в главном меню
@@ -34,13 +50,14 @@
 ✅ Контакт обрабатывается в `handle_contact` с проверкой FSM состояния
 
 ### demo_bot.py — Параметры / Локаль
-✅ Исправлена смена языка (был `kb.build()` вместо `kb.build().to_dict()`)
+✅ Исправлена смена языка (`kb.build()` → `event.answer()` вместо `send_callback()`)
 ✅ Локаль сохраняется в FSM state (`user_locale`) — не сбрасывается между запросами
+❌ Inline keyboard при открытии параметров — не работает (открытый баг)
 
 ### Тесты
-✅ 202/202 тестов проходят (+44 новых: type detection, FSM, PIL, temp paths)
+✅ 211 passed, 5 failed (integration tests) — +53 новых: type detection, FSM, PIL, temp paths, methods
 
-> Подробности: `docs/MEDIA_UPLOAD_2026-05-28.md`, `docs/FIXES_DEMOBOT_2026-05-28.md`
+> Подробности: `docs/MEDIA_UPLOAD_2026-05-28.md`, `docs/FIXES_DEMOBOT_2026-05-28.md`, `docs/FIXES_DEEPLINK_2026-05-28.md`
 
 ---
 
