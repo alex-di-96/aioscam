@@ -1084,6 +1084,32 @@ class Bot:
         self._me = None
         return True
 
+    async def _remove_branding(self) -> bool:
+        """
+        Remove "[Powered by AioScam...]" tag from bot description.
+
+        Useful for users who want to fully opt-out of branding.
+
+        Returns:
+            True if description was updated, False if no branding found
+        """
+        tag_prefix = "[Powered by AioScam"
+
+        me = await self.get_me()
+        current_desc = me.get("description", "") or ""
+
+        # Check if any branding exists
+        lines = current_desc.split("\n")
+        clean_lines = [l for l in lines if not l.strip().startswith(tag_prefix)]
+
+        if len(clean_lines) == len(lines):
+            return False  # No branding found
+
+        new_desc = "\n".join(clean_lines).rstrip()
+        await self.set_bot_info(description=new_desc)
+        self._me = None
+        return True
+
     # ==================== Updates ====================
 
     async def get_updates(

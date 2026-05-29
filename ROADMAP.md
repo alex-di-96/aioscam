@@ -129,3 +129,9 @@
 - [ ] Plugin system
 - [ ] Media download helpers (высокоуровневые)
 - [ ] Sticker/animation поддержка
+- [ ] AI агенты — интеграция с LLM (OpenAI, Claude, GigaChat) для умных ответов в ботах
+
+### Community
+- [ ] ☕ **Buy me a cookie** — добавить Boosty/Patreon ссылку в README ✅ (done)
+- [ ] GitHub Sponsors
+- [ ] Open Collective

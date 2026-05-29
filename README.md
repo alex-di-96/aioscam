@@ -213,3 +213,14 @@ python -m pytest tests/ -v
 ## License
 
 MIT License — [aLex Di](https://github.com/alex-di-96)
+
+## ☕ Support the Project
+
+If you find AioScam useful and want to support its development, consider:
+
+- 🍪 **Buy me a cookie** — [Boosty](https://boosty.to/your-profile)
+- ⭐ **Star the repo** — it helps with visibility
+- 🐛 **Report bugs** — open issues for any problems you find
+- 🤝 **Contribute** — PRs welcome!
+
+Every cookie fuels more features, faster bug fixes, and better documentation! 🚀
