@@ -56,10 +56,18 @@ class BaseMethod(ABC):
         Returns:
             API response result
         """
+        # For long polling (GET /updates with timeout param), aiohttp timeout
+        # must exceed the server-side timeout to avoid race condition
+        timeout = None
+        if self.params and "timeout" in self.params:
+            # Server-side timeout + 10 seconds buffer for network latency
+            timeout = self.params["timeout"] + 10
+
         response = await bot.client.request(
             self.path,
             method=self.http_method,
             params=self.params,
             body=self.body if self.body else None,
+            timeout=timeout,
         )
         return response.result

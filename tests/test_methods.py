@@ -147,6 +147,7 @@ class TestBaseMethodExecute:
             method=HttpMethod.GET,
             params=None,
             body=None,
+            timeout=None,
         )
 
     @pytest.mark.asyncio

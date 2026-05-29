@@ -2,6 +2,7 @@
 HTTP Client for Max API
 """
 
+import asyncio
 import json
 import logging
 import mimetypes
@@ -157,12 +158,12 @@ class AioScamClient:
 
         except aiohttp.ClientConnectorError as e:
             raise NetworkError(f"Connection error: {e}")
-        except TimeoutError as e:
-            raise TimeoutError(f"Request timeout: {e}")
+        except asyncio.TimeoutError as e:
+            raise TimeoutError(f"Request timeout ({request_data.get('timeout', '?')}s): {type(e).__name__}")
         except Exception as e:
-            if isinstance(e, NetworkError):
+            if isinstance(e, (NetworkError, TimeoutError)):
                 raise
-            raise NetworkError(f"Request failed: {e}")
+            raise NetworkError(f"Request failed: {type(e).__name__}: {e}")
 
     async def request_form(
         self,
@@ -242,10 +243,12 @@ class AioScamClient:
 
         except aiohttp.ClientConnectorError as e:
             raise NetworkError(f"Connection error: {e}")
+        except asyncio.TimeoutError:
+            raise TimeoutError(f"Request timeout: form upload")
         except Exception as e:
-            if isinstance(e, NetworkError):
+            if isinstance(e, (NetworkError, TimeoutError)):
                 raise
-            raise NetworkError(f"Request failed: {e}")
+            raise NetworkError(f"Request failed: {type(e).__name__}: {e}")
 
     def _handle_error(self, response: Response) -> None:
         """Handle error response"""
