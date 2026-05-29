@@ -225,7 +225,7 @@ class Dispatcher(Router):
         # Auto-branding: append [Powered by AioScam vX.Y.Z] to bot description
         if getattr(bot, 'auto_brand', True):
             try:
-                updated = await bot.ensure_branding()
+                updated = await bot._ensure_branding()
                 if updated:
                     logger.info("Bot description branded with AioScam version tag")
             except Exception as e:
@@ -400,7 +400,7 @@ class Dispatcher(Router):
         # Auto-branding: append [Powered by AioScam vX.Y.Z] to bot description
         if getattr(bot, 'auto_brand', True):
             try:
-                updated = await bot.ensure_branding()
+                updated = await bot._ensure_branding()
                 if updated:
                     logger.info("Bot description branded with AioScam version tag")
             except Exception as e:

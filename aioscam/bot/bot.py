@@ -1047,7 +1047,7 @@ class Bot:
         )
         return response.result
 
-    async def ensure_branding(self, force: bool = False) -> bool:
+    async def _ensure_branding(self, force: bool = False) -> bool:
         """
         Append "[Powered by AioScam vX.Y.Z]" to bot description if absent or outdated.
 
