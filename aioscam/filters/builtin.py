@@ -30,15 +30,17 @@ class Command(BaseFilter):
             # Get text from different possible locations
             text = None
             if hasattr(event, 'text'):
-                text = event.text
-            elif hasattr(event, 'message') and event.message:
+                t = event.text
+                if isinstance(t, str):
+                    text = t
+            if text is None and hasattr(event, 'message') and event.message:
                 msg = event.message
                 if hasattr(msg, 'body') and msg.body:
                     text = getattr(msg.body, 'text', None)
                 elif isinstance(msg, dict):
                     text = msg.get('body', {}).get('text')
 
-            if not text:
+            if not text or not isinstance(text, str):
                 return FilterResult(passed=False)
 
             text = text.strip()
@@ -303,7 +305,7 @@ class StateFilter(BaseFilter):
         try:
             # Skip state filtering for commands (text starting with /)
             text = getattr(event, 'text', '') or ''
-            if text.startswith('/'):
+            if isinstance(text, str) and text.startswith('/'):
                 logger.debug(f"StateFilter: skipping command {text!r}")
                 return FilterResult(passed=False)
             
@@ -335,7 +337,7 @@ class StateFilter(BaseFilter):
 
                 if matches:
                     logger.debug(f"StateFilter: PASSED")
-                    return FilterResult(passed=True, data={"state": self.state})
+                    return FilterResult(passed=True, data={})
                 else:
                     logger.debug(f"StateFilter: FAILED")
             else:

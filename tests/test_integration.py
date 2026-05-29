@@ -91,27 +91,30 @@ class TestIntegrationFSMRegistration:
         dp.include_router(router)
         
         chat = Chat(id=1, type=ChatTypeEnum.PRIVATE)
-        
+
+        # Use a real dict for event.data so StateFilter can inject/read state
+        event = MagicMock()
+        event.data = {}
+
         # Step 1: /register
         body = MessageBody(text="/register")
         message = Message(id=1, chat=chat, body=body)
-        event = MagicMock()
         event.message = message
-        
+
         result = await dp.process_message(event)
-        
+
         # Step 2: Enter name
         body = MessageBody(text="John")
         message = Message(id=2, chat=chat, body=body)
         event.message = message
-        
+
         result = await dp.process_message(event)
-        
+
         # Step 3: Enter age
         body = MessageBody(text="25")
         message = Message(id=3, chat=chat, body=body)
         event.message = message
-        
+
         result = await dp.process_message(event)
         
         assert "Enter name:" in responses

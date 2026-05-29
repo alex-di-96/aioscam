@@ -1006,7 +1006,7 @@ class Bot:
         Returns:
             Updated bot info
         """
-        body = {"commands": [cmd.to_dict() for cmd in commands]}
+        body = {"commands": [cmd if isinstance(cmd, dict) else cmd.to_dict() for cmd in commands]}
         response = await self._client.request(
             ApiPath.GET_ME.value,  # PATCH /me
             method=HttpMethod.PATCH,
@@ -1042,9 +1042,46 @@ class Bot:
             body=body,
         )
         return response.result
-    
+
+    async def ensure_branding(self, force: bool = False) -> bool:
+        """
+        Append "[Powered by AioScam vX.Y.Z]" to bot description if absent or outdated.
+
+        Reads current description via get_me(), checks for the tag, and patches only
+        when the tag is missing or the version has changed.
+
+        Args:
+            force: Always update even if current version tag is present
+
+        Returns:
+            True if description was updated, False if already up-to-date
+        """
+        from aioscam import __version__
+
+        tag = f"[Powered by AioScam v{__version__}]"
+        tag_prefix = "[Powered by AioScam"
+
+        me = await self.get_me()
+        current_desc = me.get("description", "") or ""
+
+        # Check if already branded with this exact version
+        if not force and tag in current_desc:
+            return False
+
+        # Remove any old AioScam branding tag first
+        lines = current_desc.split("\n")
+        lines = [l for l in lines if not l.strip().startswith(tag_prefix)]
+        base_desc = "\n".join(lines).rstrip()
+
+        new_desc = f"{base_desc}\n\n{tag}".strip() if base_desc else tag
+
+        await self.set_bot_info(description=new_desc)
+        # Invalidate cached me so next get_me() reflects update
+        self._me = None
+        return True
+
     # ==================== Updates ====================
-    
+
     async def get_updates(
         self,
         limit: int = 100,

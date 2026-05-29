@@ -945,9 +945,7 @@ async def handle_contact(event):
             await state.set_state(None)
 
             # Send processed image with "Back to menu" button
-            builder = KeyboardBuilder(inline=True)
-            builder.callback("↩️ Назад в меню", "action:start_menu")
-            kb = builder.build().to_dict()
+            kb = _back_to_menu_keyboard()
 
             from aioscam import InputMediaBuffer, UploadType
             from aioscam.utils.media import process_input_media

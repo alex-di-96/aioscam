@@ -36,34 +36,43 @@ class BaseHandler(ABC):
     async def check(self, event: Any) -> Optional[Dict]:
         """
         Check if event passes all filters
-        
+
         Args:
             event: Event object
-        
+
         Returns:
             Filter data if passed, None otherwise
         """
         from magic_filter import MagicFilter
-        
+        from aioscam.fsm.state import State as FsmState
+        from aioscam.filters.builtin import StateFilter
+
+        data: Dict = {}
+
         for f in self.filters:
             # Handle MagicFilter objects
             if isinstance(f, MagicFilter):
                 try:
-                    # MagicFilter.resolve() returns the result or raises exception
                     result = f.resolve(event)
-                    # If result is falsy, filter didn't pass
                     if not result:
                         return None
                 except Exception:
-                    # If resolve raises exception, filter doesn't pass
                     return None
+            # Handle FSM State objects used directly as filters
+            elif isinstance(f, FsmState):
+                sf = StateFilter(f)
+                result = await sf(event)
+                if not result.passed:
+                    return None
+                data.update(result.data or {})
             # Handle regular BaseFilter objects
             elif isinstance(f, BaseFilter):
                 result = await f(event)
                 if not result.passed:
                     return None
+                data.update(result.data or {})
             else:
                 # Unknown filter type, skip it
                 continue
-        
-        return {}
+
+        return data
