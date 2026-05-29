@@ -223,13 +223,19 @@ class Dispatcher(Router):
         logger.info("Starting polling...")
 
         # Auto-branding: append [Powered by AioScam vX.Y.Z] to bot description
-        if getattr(bot, 'auto_brand', True):
+        if getattr(bot, 'auto_brand', False):
             try:
                 updated = await bot._ensure_branding()
                 if updated:
                     logger.info("Bot description branded with AioScam version tag")
             except Exception as e:
                 logger.debug(f"Auto-branding skipped: {e}")
+        else:
+            # Remove old branding if auto_brand is disabled
+            try:
+                await bot._remove_branding()
+            except Exception:
+                pass
 
         # Delete webhook if active
         try:
@@ -398,13 +404,19 @@ class Dispatcher(Router):
         from aiohttp import web
 
         # Auto-branding: append [Powered by AioScam vX.Y.Z] to bot description
-        if getattr(bot, 'auto_brand', True):
+        if getattr(bot, 'auto_brand', False):
             try:
                 updated = await bot._ensure_branding()
                 if updated:
                     logger.info("Bot description branded with AioScam version tag")
             except Exception as e:
                 logger.debug(f"Auto-branding skipped: {e}")
+        else:
+            # Remove old branding if auto_brand is disabled
+            try:
+                await bot._remove_branding()
+            except Exception:
+                pass
 
 
         self._webhook_secret = secret_token

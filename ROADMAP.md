@@ -55,8 +55,18 @@
 ✅ Локаль сохраняется в FSM state (`user_locale`) — не сбрасывается между запросами
 ✅ Inline keyboard при открытии параметров — работает (подтверждено 2026-05-29)
 
+### demo_bot.py — UX polish (2026-05-29)
+✅ "⏹️ Отмена" удалена из главного меню (орфан, нет кейса применения)
+✅ `action:cancel` callback остаётся для ⚙️ Параметры → 🔙 Назад
+✅ `/cancel` команда работает для FSM state cancellation
+✅ Главное меню: 10 кнопок (было 11)
+✅ MyCommands расширены: 3 → 8 команд (start, help, stats, register, quiz, feedback, contact, cancel)
+✅ Database auto-recovery — при повреждении SQLite файл удаляется и пересоздаётся
+
 ### Тесты
-✅ 211 passed, 5 failed (integration tests) — +53 новых: type detection, FSM, PIL, temp paths, methods
+✅ **216 passed, 0 failed** — все тесты проходят (было 211 passed, 5 failed)
+- Timeout race condition fix — polling больше не падает каждые 5 минут
+- 5 integration тестов исправлены (были сломаны из-за timeout)
 
 > Подробности: `docs/MEDIA_UPLOAD_2026-05-28.md`, `docs/FIXES_DEMOBOT_2026-05-28.md`, `docs/FIXES_DEEPLINK_2026-05-28.md`
 

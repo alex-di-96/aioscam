@@ -1791,9 +1791,9 @@ async def main():
     await bot.set_my_commands(commands)
     print(f"✅ Зарегистрировано {len(commands)} команд: {[c.name for c in commands]}")
     
-    # Bot description branding is applied automatically by start_polling()
-    # To change description manually: await bot.set_bot_info(description="...")
-    # To opt out of auto-branding:    Bot(auto_brand=False)
+    # Bot description branding is OFF by default (auto_brand=False)
+    # To enable AioScam branding: Bot(auto_brand=True, ...)
+    # To set custom description: await bot.set_bot_info(description="...")
     
     try:
         await dp.start_polling(bot, skip_updates=False)
