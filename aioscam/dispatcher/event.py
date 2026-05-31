@@ -73,6 +73,19 @@ class EventContext:
     @property
     def from_user(self) -> Optional[User]:
         """Get user from event"""
+        # For callback events: prefer callback.user over sender
+        # (sender is the bot, callback.user is the actual user who clicked)
+        if isinstance(self.event, dict):
+            cb = self.event.get('callback', {})
+            if isinstance(cb, dict) and 'user' in cb:
+                return cb['user']
+        elif hasattr(self.event, 'callback'):
+            cb = self.event.callback
+            if isinstance(cb, dict) and 'user' in cb:
+                return cb['user']
+            elif hasattr(cb, 'user'):
+                return cb.user
+        
         # Direct sender attribute
         if hasattr(self.event, 'sender'):
             return self.event.sender
@@ -83,14 +96,10 @@ class EventContext:
                 return msg.sender
             elif isinstance(msg, dict):
                 return msg.get('sender')
-        # For callback: event may have sender or callback.user
+        # Fallback: check dict event
         if isinstance(self.event, dict):
             if 'sender' in self.event:
                 return self.event['sender']
-            # Check callback.user for callback events
-            cb = self.event.get('callback', {})
-            if isinstance(cb, dict) and 'user' in cb:
-                return cb['user']
             msg = self.event.get('message', {})
             if isinstance(msg, dict):
                 return msg.get('sender')
