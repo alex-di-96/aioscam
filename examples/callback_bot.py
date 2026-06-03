@@ -9,7 +9,7 @@ Demonstrates callback handling with the new send_callback() API:
 
 SDK alignment:
 - URL: https://botapi.max.ru/answers
-- Auth: access_token in query params
+- Auth: Authorization header (access_token query param deprecated by Max API)
 - Body: JSON {"message": {"text": "..."}, "notification": "..."}
 """
 
@@ -45,7 +45,7 @@ async def cmd_start(event):
         "• JSON body\n"
         "• message — структура NewMessageBody\n"
         "• notification — всплывающее окно\n"
-        "• access_token в query params",
+        "• Authorization header (не access_token в params)",
         keyboard=builder.build().to_dict()
     )
 
@@ -110,7 +110,7 @@ async def cmd_help(event):
         "SDK alignment:\n"
         "• URL: botapi.max.ru/answers\n"
         "• JSON body: {message: {text}, notification}\n"
-        "• access_token в query params"
+        "• Authorization header (не access_token в params)"
     )
 
 

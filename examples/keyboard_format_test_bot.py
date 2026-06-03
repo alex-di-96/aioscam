@@ -112,8 +112,9 @@ async def cmd_start(event):
 async def handle_callback(event):
     """Handle callback queries"""
     callback_data = event.callback_data
+    callback_id = event.callback_id
     logger.info(f"Callback received: {callback_data}")
-    
+
     responses = {
         "test_128_chars": "✅ Длинная кнопка (128 символов) нажата!",
         "html_ok": "✅ HTML формат работает корректно!",
@@ -122,10 +123,9 @@ async def handle_callback(event):
         "multiline_test": "✅ Многострочная кнопка нажата!",
         "short_button": "✅ Короткая кнопка нажата!",
     }
-    
+
     response = responses.get(callback_data, f"🔘 Кнопка: {callback_data}")
-    
-    await event.answer(response)
+    await event.bot.send_callback(callback_id=callback_id, message=response)
 
 
 # Include router into dispatcher

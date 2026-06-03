@@ -68,21 +68,22 @@ async def cmd_menu(event):
 
 @router.callback_query()
 async def handle_callback(event):
-    """Handle callback queries"""
+    """Handle callback queries — must use send_callback() to dismiss the button spinner"""
     callback_data = event.callback_data
+    callback_id = event.callback_id
 
     if callback_data == "stats":
-        await event.answer("📊 Статистика: пока нет данных")
+        await event.bot.send_callback(callback_id=callback_id, message="📊 Статистика: пока нет данных")
     elif callback_data == "settings":
-        await event.answer("⚙️ Настройки откроются soon")
+        await event.bot.send_callback(callback_id=callback_id, message="⚙️ Настройки откроются soon")
     elif callback_data == "help":
-        await event.answer("ℹ️ Справка: используйте /start")
+        await event.bot.send_callback(callback_id=callback_id, message="ℹ️ Справка: используйте /start")
     elif callback_data == "orders":
-        await event.answer("📦 У вас пока нет заказов")
+        await event.bot.send_callback(callback_id=callback_id, message="📦 У вас пока нет заказов")
     elif callback_data == "cart":
-        await event.answer("🛒 Корзина пуста")
+        await event.bot.send_callback(callback_id=callback_id, message="🛒 Корзина пуста")
     else:
-        await event.answer(f"🔘 Нажата кнопка: {callback_data}")
+        await event.bot.send_callback(callback_id=callback_id, message=f"🔘 Нажата кнопка: {callback_data}")
 
 
 # Include router into dispatcher

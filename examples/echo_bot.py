@@ -41,7 +41,7 @@ async def echo_message(event):
     if event.message.has_text:
         # Show typing action
         from aioscam.enums import SenderAction
-        await event.bot.send_action(event.chat.id, SenderAction.TYPING)
+        await event.bot.send_action(event.chat_id, SenderAction.TYPING)
 
         # Echo the message
         await event.answer(f"🔁 {event.text}")

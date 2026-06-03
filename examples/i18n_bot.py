@@ -70,23 +70,15 @@ async def cmd_lang(event):
 async def handle_callback(event):
     """Handle language selection and other callbacks"""
     callback_data = event.callback_data or ""
+    callback_id = event.callback_id
 
     if callback_data.startswith("lang:"):
-        # User selected a language
         locale = callback_data.split(":")[1]
-        
-        # Save locale in event data (persists via FSM if used)
-        event.data['locale'] = locale
-        
-        # Respond in the new locale
-        # Temporarily override locale for this response
         event.data['locale'] = locale
         text = i18n(event, "lang_changed")
-        await event.answer(text)
-
+        await event.bot.send_callback(callback_id=callback_id, message=text)
     else:
-        # Default callback handling
-        await event.answer(f"🔘 Callback: {callback_data}")
+        await event.bot.send_callback(callback_id=callback_id, message=f"🔘 Callback: {callback_data}")
 
 
 @router.message_created()
