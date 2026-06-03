@@ -21,6 +21,8 @@ from aioscam.enums import (
 from aioscam.exceptions import BotTokenError
 from aioscam.types.command import BotCommand
 
+MAX_TEXT_LENGTH = 4000
+
 
 class Bot:
     """
@@ -162,6 +164,24 @@ class Bot:
         Returns:
             Sent message data
         """
+        # Auto-split: Max API limits message text to 4000 chars
+        if text and len(text) > MAX_TEXT_LENGTH:
+            chunks = [text[i:i + MAX_TEXT_LENGTH] for i in range(0, len(text), MAX_TEXT_LENGTH)]
+            result: Dict[str, Any] = {}
+            for i, chunk in enumerate(chunks):
+                is_last = i == len(chunks) - 1
+                result = await self.send_message(
+                    chat_id=chat_id,
+                    text=chunk,
+                    user_id=user_id,
+                    reply_to_mid=reply_to_mid if i == 0 else None,
+                    keyboard=keyboard if is_last else None,
+                    format=format,
+                    attachments=attachments if is_last else None,
+                    **(kwargs if is_last else {}),
+                )
+            return result
+
         # Use method object when no extra kwargs and no attachments
         if not kwargs and not attachments:
             return await self.execute(SendMessage(
@@ -313,6 +333,8 @@ class Bot:
         body: Dict[str, Any] = {"attachments": []}
 
         if text:
+            if len(text) > MAX_TEXT_LENGTH:
+                text = text[:MAX_TEXT_LENGTH - 1] + "…"
             body["text"] = text
 
         if attachments:
@@ -516,7 +538,7 @@ class Bot:
 
         Matches official Max SDK (Python, Go, TypeScript):
         - URL: https://botapi.max.ru/answers
-        - Auth: access_token in query params
+        - Auth: Authorization header (access_token query param deprecated by Max API)
         - Body: JSON {"message": NewMessageBody, "notification": string}
 
         Args:
@@ -537,10 +559,9 @@ class Bot:
 
         session = await self._client._get_session()
 
-        # Python SDK uses access_token in query params
+        # Max API deprecated access_token query param — use Authorization header
         params = {
             "callback_id": callback_id,
-            "access_token": self.token,
         }
 
         # Build NewMessageBody structure (matches OpenAPI schema)
@@ -569,11 +590,18 @@ class Bot:
         if notification is not None:
             body["notification"] = notification
 
+        # Max API requires at least message or notification — send empty notification to dismiss
+        if not body:
+            body["notification"] = ""
+
         async with session.post(
             url=callback_url,
             params=params,
             json=body,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": self.token,
+            },
             timeout=aiohttp.ClientTimeout(total=self._client.default_timeout),
         ) as resp:
             response_text = await resp.text()
@@ -1022,13 +1050,15 @@ class Bot:
         self,
         name: Optional[str] = None,
         description: Optional[str] = None,
+        username: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Change bot name and/or description (shown in bot profile)
+        Change bot name, description and/or username (shown in bot profile)
 
         Args:
-            name: New bot name (optional)
-            description: New bot description (optional)
+            name: New bot display name (max 59 chars)
+            description: New bot description (max 16000 chars)
+            username: New bot @username (4-64 chars, must start with a letter)
 
         Returns:
             Updated bot info
@@ -1038,6 +1068,8 @@ class Bot:
             body["name"] = name
         if description:
             body["description"] = description
+        if username:
+            body["username"] = username
         if not body:
             return await self.get_me()
         response = await self._client.request(

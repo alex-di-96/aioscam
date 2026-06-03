@@ -19,17 +19,19 @@ import logging
 from aioscam import Bot, Dispatcher, Router, Command
 from aioscam.utils.keyboard import KeyboardBuilder
 
-# Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s [%(levelname)-8s] %(name)s | %(message)s',
+)
+logger = logging.getLogger(__name__)
 
-# Create dispatcher and router
 dp = Dispatcher()
 router = Router()
 
 
 @router.message_created(Command("start"))
 async def cmd_start(event):
-    """Show callback demo menu"""
+    logger.info("cmd_start: user=%s", getattr(event.from_user, 'user_id', '?'))
     builder = KeyboardBuilder(inline=True)
     builder.callback("ℹ️ Ответ текстом", "cb:message")
     builder.callback("🔔 Ответ + уведомление", "cb:notify")
@@ -50,41 +52,47 @@ async def cmd_start(event):
 
 @router.callback_query()
 async def handle_callback(event):
-    """Handle all callback queries using bot.send_callback()"""
     callback_data = event.callback_data or ""
+    callback_id = event.callback_id
+    logger.info("callback received: data=%r  id=%s", callback_data, callback_id)
 
     if callback_data == "cb:message":
-        # Answer with message only (no notification popup)
-        await event.bot.send_callback(
-            callback_id=event.callback_id,
+        result = await event.bot.send_callback(
+            callback_id=callback_id,
             message="ℹ️ Это текстовый ответ на callback.",
         )
 
     elif callback_data == "cb:notify":
-        # Answer with both message and notification (popup)
-        await event.bot.send_callback(
-            callback_id=event.callback_id,
+        result = await event.bot.send_callback(
+            callback_id=callback_id,
             message="🔔 Вы нажали кнопку с уведомлением!",
             notification="Это всплывающее окно!",
         )
 
     elif callback_data == "cb:close":
-        # Close callback without any message (just dismiss)
-        await event.bot.send_callback(
-            callback_id=event.callback_id,
+        result = await event.bot.send_callback(
+            callback_id=callback_id,
         )
 
     else:
-        # Fallback
-        await event.bot.send_callback(
-            callback_id=event.callback_id,
+        result = await event.bot.send_callback(
+            callback_id=callback_id,
             message=f"🔘 Callback: {callback_data}",
         )
+
+    # Диагностика: показываем что реально вернул send_callback
+    # Ожидаем {"success": true} или аналогичный JSON от API
+    # Если видим {"raw": "..."} — значит баг с двойным чтением ответа подтверждён
+    logger.debug("send_callback result: %s", result)
+    if isinstance(result, dict) and "raw" in result and "success" not in result:
+        logger.warning("send_callback вернул raw-строку вместо JSON — баг подтверждён! result=%s", result)
+    else:
+        logger.info("send_callback OK: %s", result)
 
 
 @router.message_created(Command("help"))
 async def cmd_help(event):
-    """Show help about callback API"""
+    logger.info("cmd_help: user=%s", getattr(event.from_user, 'user_id', '?'))
     await event.answer(
         "📖 **Callback API (SDK-aligned)**\n\n"
         "**bot.send_callback():**\n"
@@ -106,21 +114,17 @@ async def cmd_help(event):
     )
 
 
-# Include router
 dp.include_router(router)
 
 
 async def main():
-    """Main function"""
     bot = Bot()
-
-    logging.info("Bot started with Callback API demo")
-    logging.info("Commands: /start, /help")
+    logger.info("Callback bot started | commands: /start /help")
 
     try:
         await dp.start_polling(bot)
     except KeyboardInterrupt:
-        print("\nBot stopped!")
+        logger.info("Bot stopped by user")
     finally:
         await bot.close()
 
