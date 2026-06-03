@@ -479,7 +479,11 @@ class TestTextFormatting:
 
     def test_italic(self):
         """Test italic formatting"""
-        assert TextFormat.italic("text") == "__text__"
+        assert TextFormat.italic("text") == "_text_"
+
+    def test_italic_differs_from_underline(self):
+        """italic and underline must produce different output"""
+        assert TextFormat.italic("x") != TextFormat.underline("x")
 
     def test_code(self):
         """Test code formatting"""

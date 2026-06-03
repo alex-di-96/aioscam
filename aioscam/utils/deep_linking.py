@@ -2,25 +2,25 @@
 Deep linking utilities
 """
 
-from urllib.parse import urlencode, parse_qs, urlparse
+from urllib.parse import urlencode, parse_qs, urlparse, quote, unquote
 
 
 def create_deep_link(bot_username: str, payload: str) -> str:
     """
     Create deep link for bot
-    
+
     Usage:
         link = create_deep_link("my_bot", "ref_12345")
         # Returns: https://max.ru/my_bot?start=ref_12345
-    
+
     Args:
         bot_username: Bot username (without @)
-        payload: Deep link payload
-    
+        payload: Deep link payload (will be URL-encoded if needed)
+
     Returns:
         Deep link URL
     """
-    return f"https://max.ru/{bot_username}?start={payload}"
+    return f"https://max.ru/{bot_username}?start={quote(payload, safe='')}"
 
 
 def create_group_deep_link(bot_username: str, group_id: int, payload: str = "") -> str:
@@ -65,7 +65,7 @@ def parse_deep_link(url: str) -> dict:
     params = {k: v[0] for k, v in parse_qs(parsed.query).items()}
 
     if "start" in params:
-        result["payload"] = params["start"]
+        result["payload"] = unquote(params["start"])
     if "add_to_group" in params:
         result["group_id"] = int(params["add_to_group"])
 

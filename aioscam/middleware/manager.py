@@ -69,7 +69,7 @@ class StateGuardMiddleware:
     def __init__(self, hints: dict = None):
         self.hints = hints or {}
     
-    async def __call__(self, handler, event):
+    async def __call__(self, event, handler):
         text = getattr(event, 'text', '') or ''
         
         if not text.startswith('/'):
@@ -82,7 +82,7 @@ class StateGuardMiddleware:
         # Check if there's active FSM state
         event_data = getattr(event, 'data', {})
         state = event_data.get('state') if isinstance(event_data, dict) else None
-        
+
         # Block command, send hint
         if state:
             current = await state.get_state()
@@ -94,5 +94,5 @@ class StateGuardMiddleware:
                     f"Для перезапуска: /start"
                 )
                 return None  # Block handler
-        
+
         return await handler(event)

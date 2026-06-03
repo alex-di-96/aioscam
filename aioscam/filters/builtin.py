@@ -190,7 +190,7 @@ class Text(BaseFilter):
             if self.ignore_case:
                 check_text = text.lower()
             
-            if self.equals:
+            if self.equals is not None:
                 equals_check = self.equals if not self.ignore_case else self.equals.lower()
                 if check_text != equals_check:
                     return FilterResult(passed=False)

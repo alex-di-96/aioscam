@@ -20,7 +20,7 @@ class MemoryStorage(BaseStorage):
     
     def _get_key(self, chat_id: int, user_id: Optional[int] = None) -> str:
         """Generate storage key"""
-        if user_id:
+        if user_id is not None:
             return f"{chat_id}:{user_id}"
         return f"{chat_id}"
     

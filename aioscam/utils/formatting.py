@@ -18,7 +18,7 @@ class TextFormat:
     @staticmethod
     def italic(text: str) -> str:
         """Make text italic"""
-        return f"__{text}__"
+        return f"_{text}_"
     
     @staticmethod
     def underline(text: str) -> str:

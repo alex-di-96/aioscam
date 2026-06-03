@@ -138,7 +138,7 @@ class AioScamClient:
 
                 try:
                     response_data = await resp.json()
-                except:
+                except Exception:
                     response_data = {"raw": response_text}
 
                 response = Response(
@@ -224,7 +224,7 @@ class AioScamClient:
 
                 try:
                     response_data = await resp.json()
-                except:
+                except Exception:
                     response_data = {"raw": response_text}
 
                 response = Response(

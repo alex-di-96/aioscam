@@ -73,7 +73,7 @@ class Router:
     
     def add_middleware(self, middleware):
         """Add middleware instance directly (not decorator)"""
-        self._middleware_manager.register(middleware)
+        self._middleware_manager.add(middleware)
     
     def middleware(self) -> Callable:
         """
@@ -91,8 +91,9 @@ class Router:
                 async def __call__(self, event, handler):
                     return await func(event, handler)
             
-            self._middlewares.append(FuncMiddleware())
-            self._middleware_manager.add(FuncMiddleware())
+            mw = FuncMiddleware()
+            self._middlewares.append(mw)
+            self._middleware_manager.add(mw)
             return func
         return decorator
     

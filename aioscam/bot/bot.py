@@ -582,11 +582,6 @@ class Bot:
             elif isinstance(keyboard, dict):
                 body["keyboard"] = keyboard
 
-        # Debug: log what we're sending
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"send_callback: body keys={list(body.keys())}, keyboard={'yes' if 'keyboard' in body else 'no'}")
-
         if notification is not None:
             body["notification"] = notification
 
@@ -612,7 +607,7 @@ class Bot:
 
             try:
                 return await resp.json()
-            except:
+            except Exception:
                 return {"raw": response_text}
     
     # ==================== Actions ====================
