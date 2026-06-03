@@ -36,7 +36,7 @@ def create_group_deep_link(bot_username: str, group_id: int, payload: str = "") 
         Deep link URL
     """
     if payload:
-        return f"https://max.ru/{bot_username}?add_to_group={group_id}&start={payload}"
+        return f"https://max.ru/{bot_username}?add_to_group={group_id}&start={quote(payload, safe='')}"
     return f"https://max.ru/{bot_username}?add_to_group={group_id}"
 
 

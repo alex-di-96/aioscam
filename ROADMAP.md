@@ -1,6 +1,53 @@
 # AioScam Roadmap
 
-## v0.1.7 — Current (2026-05-28)
+## v0.1.8 — Current (2026-06-03)
+
+### Code Review #2 — 3 bugs + 94 new unit tests (commit pending)
+
+#### Bugs fixed
+
+**Bug 1 — `Update.event` returned `None` for lifecycle event types (CRITICAL)**
+All event handlers for `bot_stopped`, `user_added`, `user_removed`, `message_edited`,
+`message_removed`, `message_chat_created`, `chat_title_changed`, `dialog_cleared`,
+`dialog_muted`, `dialog_unmuted`, `bot_added`, `bot_removed` **never fired** in production.
+`_process_update()` checks `if not event_type or not event: return` — and `Update.event`
+was `None` for all event types except the three "main" ones.
+Fix: `if self.update_type: return self`
+> File: `aioscam/types/update.py`
+
+**Bug 2 — `I18n.gettext` fallback to default locale was broken**
+When a key was missing in the requested locale, the code tried to look up the
+default locale name (`"en"`) as a key inside the current locale dict — not in
+`self._translations`. Result: always fell through to returning the raw key string
+instead of the default locale translation.
+Fix: `text = translations.get(key); if text is None: text = self._translations.get(self.default_locale, {}).get(key, key)`
+> File: `aioscam/i18n/i18n.py`
+
+**Bug 3 — `create_group_deep_link` didn't URL-encode the payload**
+`create_deep_link()` uses `quote(payload, safe='')` but `create_group_deep_link()`
+with a payload just did f-string interpolation — payload with `=`, `&`, spaces
+would produce malformed URLs and fail to round-trip through `parse_deep_link()`.
+Fix: added `quote(payload, safe='')` to the group deep link URL.
+> File: `aioscam/utils/deep_linking.py`
+
+#### New unit tests (+94 tests, 463 total)
+
+- `tests/test_dispatcher_routing.py` — `Update.event` for all 13 event types,
+  `Update` properties (text, sender, recipient), `Dispatcher._process_update`
+  routing for all event types, state injection, StateGuard blocking/allowing,
+  `stop_polling` / `stop_webhook` controls
+- `tests/test_filters_scene_webhook.py` — `StartCommand` (all 5 match modes),
+  `ContentType`, `AllFilter`, `Scene` class (6 tests), `StateGuardMiddleware`
+  standalone with hint logic, `I18n` fallback locale (bug fix coverage),
+  `create_group_deep_link` URL encoding (bug fix coverage),
+  `AiohttpWebhookHandler` (secret token, no-secret, invalid, exception→500),
+  `Bot.request_contact/request_location`, `Bot.send_action`, `Bot.delete_message`,
+  `Bot.get_messages`, `Bot.get_message`, context manager, aliases,
+  `delete_webhook()` deprecation warning
+
+---
+
+## v0.1.7 — (2026-05-28)
 
 ### Async integrity + Webhook fixes (коммит da9e787)
 ✅ **I18n** — убран блокирующий `open()` в `__init__`, добавлен `async def reload()` через `aiofiles`

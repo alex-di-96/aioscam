@@ -78,7 +78,7 @@ class Update(MaxObject):
     @property
     def event(self) -> Optional["Update"]:
         """Get event object (returns self for direct access)"""
-        if self.update_type in ("message_created", "message_callback", "bot_started"):
+        if self.update_type:
             return self
         return None
 

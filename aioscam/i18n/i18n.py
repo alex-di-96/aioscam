@@ -190,7 +190,9 @@ class I18n:
         """
         locale = self.get_locale(event)
         translations = self._translations.get(locale, {})
-        text = translations.get(key, translations.get(self.default_locale, {}).get(key, key))
+        text = translations.get(key)
+        if text is None:
+            text = self._translations.get(self.default_locale, {}).get(key, key)
 
         if kwargs:
             try:
