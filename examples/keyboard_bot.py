@@ -1,28 +1,35 @@
 """
-Keyboard Bot — inline keyboards, reply keyboards, callbacks, hide-on-click
+Keyboard Bot — inline keyboards, button types, callbacks, hide-on-click
 
 DEMONSTRATES
 ────────────
-  • KeyboardBuilder inline=True   — inline buttons attached to a message
-  • KeyboardBuilder inline=False  — reply keyboard (shown below input field)
-  • ButtonType.CALLBACK           — triggers callback_query event
-  • ButtonType.LINK               — opens URL in browser
-  • bot.send_callback()           — acknowledge button click (dismisses spinner)
-  • event.hide_keyboard()         — remove inline keyboard after click
+  • KeyboardBuilder inline=True      — inline buttons attached to a message
+  • ButtonType.CALLBACK              — triggers callback_query event
+  • ButtonType.LINK                  — opens URL in browser
+  • request_contact() / request_location() — request user data buttons
+  • bot.send_callback()              — acknowledge button click (dismisses spinner)
+  • event.hide_keyboard()            — remove inline keyboard after click
   • event.answer_and_hide_keyboard() — reply + remove keyboard in one call
+
+NOTE ON KEYBOARD TYPES
+──────────────────────
+  Max Messenger supports only INLINE keyboards (attached to messages).
+  There is no "reply keyboard" (persistent buttons below input field) like
+  in Telegram — that concept does not exist in the Max API.
+  Button types: callback, link, request_contact (only these 3 exist in Max API).
 
 COMMANDS
 ────────
   /start   — inline keyboard with callback buttons and a link button
   /menu    — multi-row inline keyboard
-  /reply   — reply keyboard (shown below the text input field)
+  /types   — show all available button types (link, contact, location)
   /hide    — demo of hide_keyboard (removes keyboard after first click)
 
 VISUAL IN MAX MESSENGER
 ───────────────────────
   /start → message with 4 inline buttons appears
   click "📊 Статистика" → spinner dismisses, bot replies "📊 Статистика: нет данных"
-  /reply → a persistent keyboard appears below the input field
+  /types → message with link + request_contact + request_location buttons
   /hide  → message with one button; clicking it removes the keyboard
 
 SETUP
@@ -105,25 +112,29 @@ async def cmd_hide(event):
     )
 
 
-# ── Reply keyboard handler ─────────────────────────────────────────────────────
+# ── All button types handler ──────────────────────────────────────────────────
 
-@router.message_created(Command("reply"))
-async def cmd_reply(event):
+@router.message_created(Command("types"))
+async def cmd_types(event):
     """
-    Reply keyboard — appears below the text input field (not attached to a message).
-
-    Use inline=False to create a reply keyboard. Buttons appear as persistent
-    shortcuts. When tapped they send the button text as a regular message.
+    Demonstrate all 3 button types available in Max API:
+      - callback: fires callback_query event
+      - link: opens URL in browser
+      - request_contact: prompts user to share their phone number
     """
-    builder = KeyboardBuilder(inline=False)   # <-- reply keyboard
-    builder.button("🆘 Помощь")
-    builder.button("📋 Меню")
+    builder = KeyboardBuilder(inline=True)
+    builder.link("🌐 Открыть сайт", "https://max.ru")
     builder.row()
-    builder.button("❌ Закрыть клавиатуру")
+    builder.request_contact("📱 Поделиться контактом")
+    builder.row()
+    builder.request_location("📍 Поделиться геолокацией")
 
     await event.answer(
-        "Ниже появилась клавиатура с кнопками.\n"
-        "Нажатие отправляет текст кнопки как сообщение.",
+        "**Типы кнопок в Max API:**\n\n"
+        "• `link` — открывает URL\n"
+        "• `request_contact` — запрос номера телефона\n"
+        "• `request_location` — запрос геолокации\n\n"
+        "_(Текстовых кнопок как в Telegram нет — Max поддерживает только inline)_",
         keyboard=builder.build().to_dict(),
     )
 
@@ -176,7 +187,7 @@ async def main():
     await bot.set_my_commands([
         BotCommand(name="start", description="Inline клавиатура с кнопками"),
         BotCommand(name="menu",  description="Многострочное меню"),
-        BotCommand(name="reply", description="Reply клавиатура под полем ввода"),
+        BotCommand(name="types", description="Все типы кнопок Max API"),
         BotCommand(name="hide",  description="Клавиатура исчезает после нажатия"),
     ])
     try:
