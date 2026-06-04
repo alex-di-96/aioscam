@@ -1,6 +1,28 @@
 # AioScam Roadmap
 
-## v0.1.8 — Current (2026-06-03)
+## v0.1.8 — Current (2026-06-04)
+
+### Live testing session — bugs found (2026-06-04)
+
+**Bug 5 — `send_action` wrong API path (HTTP 404)**
+`SEND_ACTION = "/actions"` → Max API returns 404 on every call.
+Correct path per official Max SDK: `POST /chats/{chat_id}/actions`.
+The bug caused any handler that called `send_action` to crash before sending a reply.
+Fix: path built dynamically `f"/chats/{chat_id}/actions"`, `chat_id` moved from body to URL.
+> Files: `aioscam/enums/api_path.py`, `aioscam/bot/bot.py`
+
+**Bug 6 — `SenderAction` enum values didn't match Max API**
+Our values: `TYPING="typing"`, `UPLOAD_PHOTO`, `RECORD_VIDEO`, `RECORD_AUDIO`, ...
+Max API values (per max-sdk): `TYPING_ON="typing_on"`, `SENDING_PHOTO`, `SENDING_VIDEO`,
+`SENDING_AUDIO`, `SENDING_FILE`, `MARK_SEEN`.
+Fix: enum rewritten to match max-sdk/py/maxapi/enums/sender_action.py.
+> File: `aioscam/enums/sender_action.py`
+
+Discovered by: live echo_bot.py test — every message echo crashed with HTTP 404.
+
+---
+
+## v0.1.8 — Previous state (2026-06-03)
 
 ### Code Review #2 — 3 bugs + 94 new unit tests (commit pending)
 
