@@ -116,8 +116,11 @@ async def echo_message(event):
     if not event.message or not event.message.has_text:
         return
 
-    # Show typing indicator
-    await event.bot.send_action(event.chat_id, SenderAction.TYPING)
+    # Show typing indicator — non-critical, ignore if API rejects it
+    try:
+        await event.bot.send_action(event.chat_id, SenderAction.TYPING_ON)
+    except Exception:
+        pass
 
     await event.answer(f"🔁 {event.text}")
 

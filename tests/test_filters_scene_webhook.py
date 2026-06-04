@@ -601,12 +601,15 @@ class TestBotMiscMethods:
         bot = Bot(token="test")
         bot._client.request = AsyncMock(return_value=Response(ok=True, result={}))
 
-        await bot.send_action(chat_id=10, action=SenderAction.TYPING)
+        await bot.send_action(chat_id=10, action=SenderAction.TYPING_ON)
 
         call_args = bot._client.request.call_args
+        # Path is now /chats/{chat_id}/actions — chat_id is in the URL, not the body
+        path = call_args.args[0] if call_args.args else call_args.kwargs.get("path", "")
+        assert "10" in path
+        assert "actions" in path
         body = call_args.kwargs.get("body", {})
-        assert body.get("action") == SenderAction.TYPING.value
-        assert body.get("chat_id") == 10
+        assert body.get("action") == SenderAction.TYPING_ON.value
 
     @pytest.mark.asyncio
     async def test_delete_message(self):

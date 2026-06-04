@@ -627,12 +627,10 @@ class Bot:
         Returns:
             Action response data
         """
+        # Path: /chats/{chat_id}/actions  (official Max SDK pattern)
         response = await self._client.request(
-            ApiPath.SEND_ACTION.value,
-            body={
-                "chat_id": chat_id,
-                "action": action.value,
-            },
+            f"{ApiPath.GET_CHATS.value}/{chat_id}{ApiPath.ACTIONS.value}",
+            body={"action": action.value},
         )
         return response.result
     

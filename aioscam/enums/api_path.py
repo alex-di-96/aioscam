@@ -25,8 +25,8 @@ class ApiPath(str, Enum):
     # Callbacks
     SEND_CALLBACK = "/answers"
     
-    # Actions
-    SEND_ACTION = "/actions"
+    # Actions — full path built dynamically: /chats/{chat_id}/actions
+    ACTIONS = "/actions"
     
     # Chats
     GET_CHATS = "/chats"
