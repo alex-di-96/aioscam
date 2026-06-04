@@ -54,7 +54,7 @@ import signal
 
 from aiohttp import web
 
-from aioscam import Bot, Dispatcher, Router, Command
+from aioscam import Bot, Dispatcher, Router, Command, BotCommand
 from aioscam.webhook import AiohttpWebhookHandler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -104,6 +104,10 @@ dp.include_router(router)
 
 async def main():
     bot = Bot()
+    await bot.set_my_commands([
+        BotCommand(name="start", description="Подтверждение webhook-режима"),
+        BotCommand(name="info",  description="URL, хост, порт и статус secret"),
+    ])
 
     # AiohttpWebhookHandler validates X-Max-Secret-Token when secret_token is set.
     # Any request without the correct token returns HTTP 401.

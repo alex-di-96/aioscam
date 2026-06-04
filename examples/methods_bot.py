@@ -41,7 +41,7 @@ WHY METHOD OBJECTS
 import asyncio
 import logging
 
-from aioscam import Bot, Dispatcher, Router, Command
+from aioscam import Bot, Dispatcher, Router, Command, BotCommand
 from aioscam import GetMe, SendMessage, GetUpdates
 from aioscam.enums import ParseMode
 
@@ -131,16 +131,18 @@ dp.include_router(router)
 
 
 async def main():
-    """Main function"""
     bot = Bot()
-
-    logging.info("Bot started with Methods API demo")
-    logging.info("Commands: /start, /me, /send, /updates")
-
+    await bot.set_my_commands([
+        BotCommand(name="start",   description="Объяснение паттерна method-objects"),
+        BotCommand(name="me",      description="GetMe() — информация о боте"),
+        BotCommand(name="send",    description="SendMessage() — отправить сообщение объектом"),
+        BotCommand(name="updates", description="GetUpdates() — получить обновления объектом"),
+    ])
+    logging.info("Methods bot started | /start /me /send /updates")
     try:
         await dp.start_polling(bot)
     except KeyboardInterrupt:
-        print("\nBot stopped!")
+        pass
     finally:
         await bot.close()
 

@@ -45,7 +45,7 @@ ROUTING PRIORITY
 import asyncio
 import logging
 
-from aioscam import Bot, Dispatcher, Router, Command, F
+from aioscam import Bot, Dispatcher, Router, Command, F, BotCommand
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -144,6 +144,13 @@ dp.include_router(common_router)
 
 async def main():
     bot = Bot()
+    await bot.set_my_commands([
+        BotCommand(name="start",    description="Приветствие"),
+        BotCommand(name="help",     description="Справка"),
+        BotCommand(name="admin",    description="Админ панель (admin_router)"),
+        BotCommand(name="profile",  description="Профиль пользователя (user_router)"),
+        BotCommand(name="settings", description="Настройки (user_router)"),
+    ])
     try:
         await dp.start_polling(bot)
     except KeyboardInterrupt:

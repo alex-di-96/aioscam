@@ -39,7 +39,7 @@ IMPORTANT
 import asyncio
 import logging
 
-from aioscam import Bot, Dispatcher, Router, Command
+from aioscam import Bot, Dispatcher, Router, Command, BotCommand
 from aioscam.utils.keyboard import KeyboardBuilder
 
 logging.basicConfig(
@@ -142,6 +142,10 @@ dp.include_router(router)
 
 async def main():
     bot = Bot()
+    await bot.set_my_commands([
+        BotCommand(name="start", description="Показать кнопки с callback"),
+        BotCommand(name="help",  description="Объяснение send_callback vs answer"),
+    ])
     logger.info("Callback bot started | /start /help")
     try:
         await dp.start_polling(bot)

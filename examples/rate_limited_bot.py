@@ -45,7 +45,7 @@ import asyncio
 import logging
 import time
 
-from aioscam import Bot, Dispatcher, Router, Command
+from aioscam import Bot, Dispatcher, Router, Command, BotCommand
 from aioscam.limiter import RateLimitConfig
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -123,6 +123,11 @@ dp.include_router(router)
 async def main():
     # Pass rate_limit to Bot — all API calls go through the limiter automatically.
     bot = Bot(rate_limit=RateLimitConfig.strict())
+    await bot.set_my_commands([
+        BotCommand(name="start",  description="Показать конфигурацию лимитера"),
+        BotCommand(name="burst",  description="Отправить 10 сообщений подряд"),
+        BotCommand(name="strict", description="Показать параметры strict() пресета"),
+    ])
     logger.info("Rate-limited bot started | /start /burst /strict")
     try:
         await dp.start_polling(bot)

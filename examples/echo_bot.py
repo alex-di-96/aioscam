@@ -36,7 +36,7 @@ SETUP
 import asyncio
 import logging
 
-from aioscam import Bot, Dispatcher, Router, Command, F
+from aioscam import Bot, Dispatcher, Router, Command, F, BotCommand
 from aioscam.enums import SenderAction
 from aioscam.utils.formatting import Bold, Italic, Code, Pre, Link, Mention
 
@@ -131,6 +131,11 @@ dp.include_router(router)
 async def main():
     # Token is read from MAX_BOT_TOKEN environment variable automatically.
     bot = Bot()
+    await bot.set_my_commands([
+        BotCommand(name="start", description="Приветствие и возможности бота"),
+        BotCommand(name="help",  description="Список команд"),
+        BotCommand(name="fmt",   description="Демо форматирования текста"),
+    ])
     logger.info("Echo bot started. Send /start in Max Messenger.")
     try:
         await dp.start_polling(bot)

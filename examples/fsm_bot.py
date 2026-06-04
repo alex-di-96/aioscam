@@ -41,7 +41,7 @@ HOW FSM WORKS
 import asyncio
 import logging
 
-from aioscam import Bot, Dispatcher, Router, Command
+from aioscam import Bot, Dispatcher, Router, Command, BotCommand
 from aioscam.fsm import State, StatesGroup
 from aioscam.middleware.manager import StateGuardMiddleware
 
@@ -184,6 +184,12 @@ dp.include_router(router)
 
 async def main():
     bot = Bot()
+    await bot.set_my_commands([
+        BotCommand(name="start",    description="Приветствие"),
+        BotCommand(name="register", description="Начать регистрацию (имя → возраст → email)"),
+        BotCommand(name="cancel",   description="Отменить активную регистрацию"),
+        BotCommand(name="status",   description="Показать текущее FSM-состояние"),
+    ])
     logger.info("FSM bot started | /start /register /cancel /status")
     try:
         await dp.start_polling(bot)

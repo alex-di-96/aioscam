@@ -53,7 +53,7 @@ HOW LOCALE DETECTION WORKS
 import asyncio
 import logging
 
-from aioscam import Bot, Dispatcher, Router, Command
+from aioscam import Bot, Dispatcher, Router, Command, BotCommand
 from aioscam.i18n import I18n
 from aioscam.utils.keyboard import KeyboardBuilder
 
@@ -157,6 +157,12 @@ dp.include_router(router)
 
 async def main():
     bot = Bot()
+    await bot.set_my_commands([
+        BotCommand(name="start",  description="Приветствие на языке пользователя"),
+        BotCommand(name="help",   description="Справка (автоперевод)"),
+        BotCommand(name="lang",   description="Выбрать язык"),
+        BotCommand(name="plural", description="Демо склонения чисел"),
+    ])
     print(f"Locales loaded: {i18n.available_locales()}")
     print(f"Default locale: {i18n.default_locale}")
     try:

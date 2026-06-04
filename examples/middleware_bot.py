@@ -45,7 +45,7 @@ import asyncio
 import logging
 import time
 
-from aioscam import Bot, Dispatcher, Router, Command
+from aioscam import Bot, Dispatcher, Router, Command, BotCommand
 from aioscam.middleware.base import BaseMiddleware
 from aioscam.middleware.manager import StateGuardMiddleware
 
@@ -159,6 +159,11 @@ dp.include_router(router)
 
 async def main():
     bot = Bot()
+    await bot.set_my_commands([
+        BotCommand(name="start", description="Приветствие (все middleware в действии)"),
+        BotCommand(name="slow",  description="Медленный хэндлер — видно в timing middleware"),
+        BotCommand(name="error", description="Намеренная ошибка — ErrorHandlerMiddleware поймает"),
+    ])
     logger.info("Middleware bot started | /start /slow /error")
     try:
         await dp.start_polling(bot)

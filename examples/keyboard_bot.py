@@ -40,7 +40,7 @@ IMPORTANT
 import asyncio
 import logging
 
-from aioscam import Bot, Dispatcher, Router, Command
+from aioscam import Bot, Dispatcher, Router, Command, BotCommand
 from aioscam.utils.keyboard import KeyboardBuilder
 from aioscam.enums import ButtonType
 
@@ -173,6 +173,12 @@ dp.include_router(router)
 
 async def main():
     bot = Bot()
+    await bot.set_my_commands([
+        BotCommand(name="start", description="Inline клавиатура с кнопками"),
+        BotCommand(name="menu",  description="Многострочное меню"),
+        BotCommand(name="reply", description="Reply клавиатура под полем ввода"),
+        BotCommand(name="hide",  description="Клавиатура исчезает после нажатия"),
+    ])
     try:
         await dp.start_polling(bot)
     except KeyboardInterrupt:

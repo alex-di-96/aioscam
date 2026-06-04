@@ -45,7 +45,7 @@ HOW DEEP LINKS WORK IN MAX
 import asyncio
 import logging
 
-from aioscam import Bot, Dispatcher, Router, StartCommand, Command
+from aioscam import Bot, Dispatcher, Router, StartCommand, Command, BotCommand
 from aioscam.enums import ParseMode
 from aioscam.utils.deep_linking import create_deep_link, create_group_deep_link, parse_deep_link
 from aioscam.utils.keyboard import KeyboardBuilder
@@ -224,6 +224,11 @@ dp.include_router(router)
 
 async def main():
     bot = Bot(parse_mode=ParseMode.MARKDOWN)
+    await bot.set_my_commands([
+        BotCommand(name="start", description="Начало работы / приём диплинка"),
+        BotCommand(name="link",  description="Получить свою реферальную ссылку"),
+        BotCommand(name="group", description="Пример ссылки для добавления в группу"),
+    ])
     me = await bot.get_me()
     bot_username = me.get("username", "your_bot")
     logger.info("Deep link bot started: @%s", bot_username)

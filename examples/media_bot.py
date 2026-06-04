@@ -62,7 +62,7 @@ try:
 except ImportError:
     HAS_PIL = False
 
-from aioscam import Bot, Dispatcher, Router, Command, F
+from aioscam import Bot, Dispatcher, Router, Command, F, BotCommand
 from aioscam import InputMedia, InputMediaBuffer, UploadType
 from aioscam.enums import ParseMode
 
@@ -319,6 +319,15 @@ dp.include_router(router)
 
 async def main():
     bot = Bot(parse_mode=ParseMode.MARKDOWN)
+    await bot.set_my_commands([
+        BotCommand(name="start",       description="Список команд"),
+        BotCommand(name="photo",       description="/photo <path> — отправить изображение"),
+        BotCommand(name="video",       description="/video <path> — отправить видео"),
+        BotCommand(name="audio",       description="/audio <path> — отправить аудио"),
+        BotCommand(name="doc",         description="/doc <path> — отправить файл"),
+        BotCommand(name="media",       description="/media <path> — авто-определение типа"),
+        BotCommand(name="buffer_demo", description="Сгенерировать изображение в памяти (PIL)"),
+    ])
     me = await bot.get_me()
     print(f"\n{'='*50}")
     print(f"🖼️  AioScam Media Bot: {me.get('first_name', 'Unknown')}")
