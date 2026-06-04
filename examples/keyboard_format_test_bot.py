@@ -1,15 +1,31 @@
 """
-Keyboard Format Test Bot
+Keyboard Format Test Bot — visual rendering test tool
 
-This example tests:
-1. Button text length (128 characters)
-2. HTML vs Markdown formatting in messages
-3. Button text rendering
+NOTE: This is a visual QA tool, not a learning example.
+      Run it to manually verify how Max Messenger renders
+      button text and message formatting.
 
-Tests how Max handles:
-- Long button text (up to 128 chars)
-- Line breaks in different formats
-- HTML vs Markdown rendering
+DEMONSTRATES
+────────────
+  • ParseMode.HTML vs ParseMode.MARKDOWN  — formatting in messages
+  • Long button text (up to 128 chars)    — max button label length
+  • Multiline button text (\\n in labels) — how Max renders line breaks
+  • KeyboardBuilder.callback()            — inline callback buttons
+
+COMMANDS
+────────
+  /start  — send 3 test messages with different keyboard configurations
+
+VISUAL IN MAX MESSENGER
+───────────────────────
+  Test 1 (HTML):     <b>bold</b>, <i>italic</i> + 128-char button
+  Test 2 (Markdown): **bold**, *italic* + normal buttons
+  Test 3:            buttons containing \\n newline characters
+
+SETUP
+─────
+  export MAX_BOT_TOKEN=your_token_here
+  python keyboard_format_test_bot.py
 """
 
 import asyncio

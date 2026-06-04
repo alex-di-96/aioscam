@@ -1,6 +1,21 @@
 #!/usr/bin/env python3
 """
-Simple Deep Link Test Bot — catch ALL updates and log raw data.
+Deep Link Debug Bot — catch ALL updates and log raw payload data
+
+NOTE: This is a debugging/inspection tool, not a learning example.
+      Use it to inspect raw Max API update payloads during development.
+      For the full deep link implementation see deep_link_bot.py.
+
+DEMONSTRATES
+────────────
+  • Catching ALL updates to inspect raw data
+  • Reading event.payload from bot_started event
+  • Reading event.data['raw_update'] for full API payload
+
+SETUP
+─────
+  export MAX_BOT_TOKEN=your_token_here
+  python deep_link_test_bot.py
 """
 import asyncio, logging, sys
 from aioscam import Bot, Dispatcher, Router

@@ -1,16 +1,39 @@
 """
-Callback API Example
+Callback Bot — detailed send_callback() API patterns
 
-Demonstrates callback handling with the new send_callback() API:
-- Inline keyboard buttons
-- bot.send_callback() — JSON body, matches official Max SDK
-- event.answer() — convenience wrapper
-- callback_data parsing
+DEMONSTRATES
+────────────
+  • bot.send_callback()           — acknowledge callback with text reply
+  • bot.send_callback(notification=) — show a popup notification
+  • bot.send_callback() no args   — dismiss spinner silently
+  • event.answer()                — sends a regular chat message (NOT callback ack)
 
-SDK alignment:
-- URL: https://botapi.max.ru/answers
-- Auth: Authorization header (access_token query param deprecated by Max API)
-- Body: JSON {"message": {"text": "..."}, "notification": "..."}
+COMMANDS
+────────
+  /start  — inline keyboard with 3 callback buttons
+  /help   — explain the difference between send_callback and event.answer
+
+VISUAL IN MAX MESSENGER
+───────────────────────
+  /start → message with 3 inline buttons
+  "ℹ️ Ответ текстом"       → spinner dismisses, bot replies with text
+  "🔔 Ответ + уведомление" → spinner dismisses + popup notification appears
+  "⏹️ Только закрыть"      → spinner dismisses silently (no message)
+
+SETUP
+─────
+  export MAX_BOT_TOKEN=your_token_here
+  python callback_bot.py
+
+IMPORTANT
+─────────
+  Max API endpoint: POST https://botapi.max.ru/answers
+  Auth: Authorization header (not access_token query param — deprecated)
+  Body: {"message": {"text": "..."}, "notification": "..."}
+
+  bot.send_callback() wraps this endpoint correctly.
+  Calling event.answer() instead sends a NEW chat message and leaves
+  the button in the loading/spinner state.
 """
 
 import asyncio
@@ -21,17 +44,22 @@ from aioscam.utils.keyboard import KeyboardBuilder
 
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s [%(levelname)-8s] %(name)s | %(message)s',
+    format="%(asctime)s [%(levelname)-8s] %(name)s | %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# ── Setup ─────────────────────────────────────────────────────────────────────
 
 dp = Dispatcher()
 router = Router()
 
 
+# ── Handlers ──────────────────────────────────────────────────────────────────
+
 @router.message_created(Command("start"))
 async def cmd_start(event):
-    logger.info("cmd_start: user=%s", getattr(event.from_user, 'user_id', '?'))
+    """Show inline keyboard to demonstrate all three send_callback patterns."""
+    logger.info("cmd_start: user=%s", getattr(event.from_user, "user_id", "?"))
     builder = KeyboardBuilder(inline=True)
     builder.callback("ℹ️ Ответ текстом", "cb:message")
     builder.callback("🔔 Ответ + уведомление", "cb:notify")
@@ -41,90 +69,84 @@ async def cmd_start(event):
     await event.answer(
         "🔘 **Callback Demo**\n\n"
         "Нажмите кнопку — бот ответит через `bot.send_callback()`.\n\n"
-        "SDK-aligned API:\n"
-        "• JSON body\n"
-        "• message — структура NewMessageBody\n"
-        "• notification — всплывающее окно\n"
-        "• Authorization header (не access_token в params)",
-        keyboard=builder.build().to_dict()
+        "• `message=` — текстовый ответ в чате\n"
+        "• `notification=` — всплывающий попап\n"
+        "• без аргументов — просто закрыть спиннер",
+        keyboard=builder.build().to_dict(),
     )
 
 
 @router.callback_query()
 async def handle_callback(event):
+    """
+    Handle button clicks.
+
+    send_callback(callback_id, message=, notification=) covers three patterns:
+      1. message only     — reply text appears in the chat
+      2. notification     — short popup toast shown to the user
+      3. neither          — spinner dismissed silently
+    """
     callback_data = event.callback_data or ""
     callback_id = event.callback_id
-    logger.info("callback received: data=%r  id=%s", callback_data, callback_id)
+    logger.info("callback: data=%r  id=%s", callback_data, callback_id)
 
     if callback_data == "cb:message":
-        result = await event.bot.send_callback(
+        await event.bot.send_callback(
             callback_id=callback_id,
             message="ℹ️ Это текстовый ответ на callback.",
         )
 
     elif callback_data == "cb:notify":
-        result = await event.bot.send_callback(
+        await event.bot.send_callback(
             callback_id=callback_id,
-            message="🔔 Вы нажали кнопку с уведомлением!",
-            notification="Это всплывающее окно!",
+            message="🔔 Сообщение в чате.",
+            notification="Это всплывающий попап!",
         )
 
     elif callback_data == "cb:close":
-        result = await event.bot.send_callback(
-            callback_id=callback_id,
-        )
+        # No message or notification — spinner dismissed silently.
+        await event.bot.send_callback(callback_id=callback_id)
 
     else:
-        result = await event.bot.send_callback(
+        await event.bot.send_callback(
             callback_id=callback_id,
-            message=f"🔘 Callback: {callback_data}",
+            message=f"🔘 Получен callback: {callback_data}",
         )
-
-    # Диагностика: показываем что реально вернул send_callback
-    # Ожидаем {"success": true} или аналогичный JSON от API
-    # Если видим {"raw": "..."} — значит баг с двойным чтением ответа подтверждён
-    logger.debug("send_callback result: %s", result)
-    if isinstance(result, dict) and "raw" in result and "success" not in result:
-        logger.warning("send_callback вернул raw-строку вместо JSON — баг подтверждён! result=%s", result)
-    else:
-        logger.info("send_callback OK: %s", result)
 
 
 @router.message_created(Command("help"))
 async def cmd_help(event):
-    logger.info("cmd_help: user=%s", getattr(event.from_user, 'user_id', '?'))
+    """Explain the API difference between send_callback and event.answer."""
     await event.answer(
-        "📖 **Callback API (SDK-aligned)**\n\n"
-        "**bot.send_callback():**\n"
+        "📖 **Callback API**\n\n"
+        "**bot.send_callback()** — подтверждает нажатие кнопки:\n"
         "```python\n"
         "await bot.send_callback(\n"
         "    callback_id=event.callback_id,\n"
-        "    message='Текст ответа',\n"
-        "    notification='Попап',  # опционально\n"
+        "    message='Текст ответа',      # опционально\n"
+        "    notification='Попап',         # опционально\n"
         ")\n"
         "```\n\n"
-        "**event.answer()** — удобная обёртка:\n"
-        "```python\n"
-        "await event.answer('Ответ!')\n"
-        "```\n\n"
-        "SDK alignment:\n"
-        "• URL: botapi.max.ru/answers\n"
-        "• JSON body: {message: {text}, notification}\n"
-        "• Authorization header (не access_token в params)"
+        "**event.answer()** — отправляет обычное сообщение в чат.\n"
+        "Используй его для /команд, но НЕ для ответа на callback.\n\n"
+        "URL: `botapi.max.ru/answers`\n"
+        "Auth: `Authorization` header"
     )
 
 
+# ── Router wiring ─────────────────────────────────────────────────────────────
+
 dp.include_router(router)
 
+# ── Entry point ───────────────────────────────────────────────────────────────
 
 async def main():
     bot = Bot()
-    logger.info("Callback bot started | commands: /start /help")
-
+    logger.info("Callback bot started | /start /help")
     try:
         await dp.start_polling(bot)
     except KeyboardInterrupt:
-        logger.info("Bot stopped by user")
+        pass
     finally:
         await bot.close()
 

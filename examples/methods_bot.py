@@ -1,10 +1,41 @@
 """
-Methods API Example
+Methods Bot — structured method objects pattern
 
-Demonstrates the structured methods pattern:
-- Bot.execute() for executing method objects
-- SendMessage, GetMe, GetUpdates as reusable objects
-- Methods can be passed around, composed, tested independently
+DEMONSTRATES
+────────────
+  • bot.execute(method)    — run any BaseMethod subclass
+  • GetMe()                — fetch bot info as an object
+  • SendMessage(chat_id, text) — send message as an object
+  • GetUpdates(limit, timeout) — fetch updates as an object
+  • method.path            — inspect the API endpoint
+  • method.http_method     — inspect GET/POST
+  • method.params          — inspect query parameters
+
+COMMANDS
+────────
+  /start   — explain the methods pattern
+  /me      — get bot info via GetMe()
+  /send    — send a message via SendMessage()
+  /updates — fetch one update via GetUpdates()
+
+VISUAL IN MAX MESSENGER
+───────────────────────
+  /me      → "🤖 Bot Info — ID: 123, Username: my_bot"
+  /send    → a second message appears: "Это сообщение отправлено через SendMessage()"
+  /updates → "📊 Получено: 1 обновление, Path: /updates"
+
+SETUP
+─────
+  export MAX_BOT_TOKEN=your_token_here
+  python methods_bot.py
+
+WHY METHOD OBJECTS
+──────────────────
+  Methods as objects (vs direct bot.get_me() calls) let you:
+    - Build a method once and execute later
+    - Pass methods as arguments (e.g. to middleware or queue)
+    - Inspect/log the request before it fires
+    - Test handler logic without mocking the Bot class
 """
 
 import asyncio
