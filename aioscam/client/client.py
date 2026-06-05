@@ -287,15 +287,14 @@ class AioScamClient:
         if not mime:
             mime = f"{upload_type}/{ext.lstrip('.') or 'octet-stream'}"
 
-        async with aiofiles.open(path, "rb") as f:
-            file_data = await f.read()
-
         form = aiohttp.FormData()
-        form.add_field("data", file_data, filename=basename, content_type=mime)
+        # Pass file handle directly for streaming
+        with open(path, "rb") as f:
+            form.add_field("data", f, filename=basename, content_type=mime)
 
-        session = await self._get_session()
-        async with session.post(url, data=form) as resp:
-            return await resp.text()
+            session = await self._get_session()
+            async with session.post(url, data=form) as resp:
+                return await resp.text()
 
     async def upload_file_buffer(
         self, url: str, buffer: bytes, filename: str, upload_type: str
@@ -350,7 +349,9 @@ class AioScamClient:
         async with session.get(url, headers=headers) as resp:
             if resp.status == 200:
                 async with aiofiles.open(path, "wb") as f:
-                    await f.write(await resp.read())
+                    # Stream download in chunks
+                    async for chunk in resp.content.iter_chunked(64 * 1024):
+                        await f.write(chunk)
             return resp.status
 
     async def download_file_bytes(self, url: str, token: str) -> Optional[bytes]:

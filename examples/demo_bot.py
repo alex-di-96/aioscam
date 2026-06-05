@@ -1442,6 +1442,9 @@ def _quiz_keyboard(question: int) -> dict:
 @main_router.callback_query(F.callback_data.startswith("feedback:"))
 async def handle_feedback_rating(event, state):
     """Handle feedback rating button clicks (feedback:1-5)"""
+    # Acknowledge callback to dismiss loading spinner
+    await event.bot.send_callback(callback_id=event.callback_id)
+
     callback_data = event.callback_data or ""
     parts = callback_data.split(":")
     if len(parts) != 2:
@@ -1468,6 +1471,9 @@ async def handle_feedback_rating(event, state):
 @main_router.callback_query(F.callback_data.startswith("quiz:"))
 async def handle_quiz_callback(event, state):
     """Handle quiz button clicks (quiz:Q:A/B/C/D)"""
+    # Acknowledge callback to dismiss loading spinner
+    await event.bot.send_callback(callback_id=event.callback_id)
+
     saved_data = await state.get_data()
     msg_id = saved_data.get('quiz_msg_id')
 
@@ -1532,6 +1538,9 @@ async def handle_callback(event):
     RU: Главный обработчик callback-кнопок меню
     EN: Main menu callback handler
     """
+    # Acknowledge callback to dismiss loading spinner
+    await event.bot.send_callback(callback_id=event.callback_id)
+
     callback_data = event.callback_data or ""
     state = event.data.get('state')
 

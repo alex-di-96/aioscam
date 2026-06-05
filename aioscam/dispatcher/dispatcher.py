@@ -169,7 +169,7 @@ class Dispatcher(Router):
         if not isinstance(payload, str):
             payload = str(payload) if payload else ''
 
-        if payload.startswith('action:'):
+        if payload:
             if payload not in self._guard_allowed_callbacks:
                 current = await state_ctx.get_state()
                 if current:
@@ -291,7 +291,8 @@ class Dispatcher(Router):
                                 logger.info(f"Raw update data: {update_data}")
 
                                 update = Update(**update_data)
-                                await self._process_update(bot, update)
+                                # Process updates in parallel to avoid blocking the loop
+                                asyncio.create_task(self._process_update(bot, update))
                             except Exception as e:
                                 logger.error(f"Error processing single update: {e}", exc_info=True)
                                 logger.error(f"Problematic update data: {update_data}")
@@ -425,7 +426,8 @@ class Dispatcher(Router):
             try:
                 data = await request.json()
                 update = Update(**data)
-                await self._process_update(bot, update)
+                # Process update in parallel to avoid blocking the webhook response
+                asyncio.create_task(self._process_update(bot, update))
                 return web.json_response({"ok": True})
             except Exception as e:
                 logger.error(f"Webhook error: {e}")

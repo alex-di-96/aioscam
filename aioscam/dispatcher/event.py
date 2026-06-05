@@ -237,12 +237,13 @@ class EventContext:
 
         return None
 
-    async def answer(self, text: str, **kwargs: Any) -> Any:
+    async def answer(self, text: str, autosplit: bool = False, **kwargs: Any) -> Any:
         """
         Answer to event message
 
         Args:
             text: Message text
+            autosplit: If True, splits message into multiple parts
             **kwargs: Additional send_message parameters
 
         Returns:
@@ -259,6 +260,7 @@ class EventContext:
             chat_id=chat_id,
             user_id=user_id,
             text=text,
+            autosplit=autosplit,
             **kwargs
         )
 

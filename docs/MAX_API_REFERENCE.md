@@ -179,7 +179,7 @@ Body: { message?: {...}, notification?: string }
 | Max API | aioscam | Соответствует? |
 |---------|---------|----------------|
 | `DeleteMessage(messageID)` | `delete_message(message_id)` | ✅ Да |
-| `AnswerOnCallback(callback_id, body)` | `send_callback(callback_id, answer, message_id)` | ⚠️ Частично |
+| `AnswerOnCallback(callback_id, body)` | `send_callback(callback_id, message, notification)` | ✅ Да |
 | `SendMessage(body, query)` | `send_message(chat_id, text, ...)` | ✅ Да |
 | `GET /subscriptions` | `get_subscriptions()` → list | ✅ Да |
 | `POST /subscriptions {url}` | `unsubscribe_webhook(url)` | ✅ Да |

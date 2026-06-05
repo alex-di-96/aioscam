@@ -157,21 +157,22 @@ class TestRateLimiter:
         assert limiter.available_tokens < initial
 
     @pytest.mark.asyncio
-    async def test_stop_cancels_background_task(self):
+    async def test_start_stop_running_flag(self):
+        # _refill_loop background task removed — refill now handled in acquire().
+        # Verify _running flag transitions correctly.
         limiter = RateLimiter()
+        assert limiter._running is False
         await limiter.start()
-        assert limiter._task is not None
+        assert limiter._running is True
         await limiter.stop()
-        assert limiter._task is None
+        assert limiter._running is False
 
     @pytest.mark.asyncio
     async def test_start_idempotent(self):
         limiter = RateLimiter()
         await limiter.start()
-        task1 = limiter._task
         await limiter.start()  # second start should be no-op
-        task2 = limiter._task
-        assert task1 is task2
+        assert limiter._running is True
         await limiter.stop()
 
 

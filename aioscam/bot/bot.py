@@ -9,7 +9,7 @@ from aioscam.client import AioScamClient
 from aioscam.client.response import Response
 from aioscam.limiter import RateLimitConfig
 from aioscam.methods.base import BaseMethod
-from aioscam.methods import GetMe, SendMessage, GetUpdates
+from aioscam.methods import GetMe, SendMessage, GetUpdates, SendCallback
 from aioscam.enums import (
     ApiPath,
     ChatPermission,
@@ -529,7 +529,6 @@ class Bot:
         callback_id: str,
         message: Optional[str] = None,
         notification: Optional[str] = None,
-        message_id: Optional[str] = None,
         format: Optional[str] = None,
         keyboard: Optional[Any] = None,
     ) -> Dict[str, Any]:
@@ -545,70 +544,20 @@ class Bot:
             callback_id: Callback ID (required by Max API)
             message: Answer text (optional)
             notification: Notification popup text (optional)
-            message_id: Message ID to edit (optional)
             format: Text format — "markdown" or "html" (optional)
             keyboard: InlineKeyboard or dict (optional)
 
         Returns:
             Callback response data
         """
-        # Use botapi.max.ru for callback endpoint (matches official Python SDK)
-        callback_url = "https://botapi.max.ru/answers"
-
-        import aiohttp
-
-        session = await self._client._get_session()
-
-        # Max API deprecated access_token query param — use Authorization header
-        params = {
-            "callback_id": callback_id,
-        }
-
-        # Build NewMessageBody structure (matches OpenAPI schema)
-        body: Dict[str, Any] = {}
-
-        if message is not None:
-            msg_body: Dict[str, Any] = {"text": message}
-            if format:
-                msg_body["format"] = format
-            elif self.parse_mode:
-                msg_body["format"] = self.parse_mode.value
-            body["message"] = msg_body
-
-        # Keyboard goes to TOP level of body (not inside message)
-        if keyboard is not None:
-            if hasattr(keyboard, 'to_dict'):
-                body["keyboard"] = keyboard.to_dict()
-            elif isinstance(keyboard, dict):
-                body["keyboard"] = keyboard
-
-        if notification is not None:
-            body["notification"] = notification
-
-        # Max API requires at least message or notification — send empty notification to dismiss
-        if not body:
-            body["notification"] = ""
-
-        async with session.post(
-            url=callback_url,
-            params=params,
-            json=body,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": self.token,
-            },
-            timeout=aiohttp.ClientTimeout(total=self._client.default_timeout),
-        ) as resp:
-            response_text = await resp.text()
-
-            if resp.status != 200:
-                from aioscam.exceptions import ApiError
-                raise ApiError(f"HTTP {resp.status}: {response_text}")
-
-            try:
-                return await resp.json()
-            except Exception:
-                return {"raw": response_text}
+        return await self.execute(SendCallback(
+            callback_id=callback_id,
+            message=message,
+            notification=notification,
+            format=format,
+            keyboard=keyboard,
+            parse_mode=self.parse_mode,
+        ))
     
     # ==================== Actions ====================
     

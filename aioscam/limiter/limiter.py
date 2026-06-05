@@ -43,26 +43,18 @@ class RateLimiter:
         self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
-        """Start the background refill task"""
+        """Start the rate limiter"""
         if self._running:
             return
         self._running = True
-        self._task = asyncio.create_task(self._refill_loop())
         logger.info(
             f"RateLimiter started: rate={self.config.rate}/s, "
             f"burst={self.config.burst}, retry_429={self.config.retry_429}"
         )
 
     async def stop(self) -> None:
-        """Stop the background refill task"""
+        """Stop the rate limiter"""
         self._running = False
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
         logger.info("RateLimiter stopped")
 
     async def acquire(self) -> None:
@@ -85,8 +77,9 @@ class RateLimiter:
                     self._tokens -= 1.0
                     return
 
-            # No token available, wait a bit and retry
-            wait_time = 1.0 / self.config.rate
+                # Calculate how long to wait for the next token to be available
+                wait_time = (1.0 - self._tokens) / self.config.rate
+
             await asyncio.sleep(wait_time)
 
     async def execute(
@@ -138,21 +131,6 @@ class RateLimiter:
 
                 # Exponential backoff for subsequent retries
                 backoff = min(backoff * 2, self.config.backoff_max)
-
-    async def _refill_loop(self) -> None:
-        """Background task: periodically refill tokens"""
-        while self._running:
-            await asyncio.sleep(0.1)
-            # Token refill is handled in acquire(), this loop exists
-            # to ensure timely refill even when acquire() isn't called
-            async with self._lock:
-                now = time.monotonic()
-                elapsed = now - self._last_refill
-                self._tokens = min(
-                    self.config.burst,
-                    self._tokens + elapsed * self.config.rate,
-                )
-                self._last_refill = now
 
     @property
     def available_tokens(self) -> float:

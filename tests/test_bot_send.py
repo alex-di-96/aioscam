@@ -97,115 +97,67 @@ class TestEditMessageTruncate:
 # ─── send_callback ──────────────────────────────────────────────────────────
 
 class TestSendCallback:
+    """
+    send_callback() now uses execute(SendCallback(...)) via AioScamClient.request().
+    Tests mock bot._client.request directly (not session.post).
+    """
+
+    def _ok(self, result=None):
+        from aioscam.client.response import Response
+        return AsyncMock(return_value=Response(ok=True, result=result or {"success": True}))
 
     @pytest.mark.asyncio
     async def test_authorization_header_used(self, bot):
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.text = AsyncMock(return_value='{"success": true}')
-        mock_resp.json = AsyncMock(return_value={"success": True})
-        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_resp.__aexit__ = AsyncMock(return_value=False)
-
-        mock_session = AsyncMock()
-        mock_session.post = MagicMock(return_value=mock_resp)
-        bot._client._get_session = AsyncMock(return_value=mock_session)
-
+        # Authorization is set by RequestBuilder.set_token() inside _do_request.
+        # We verify the request goes to the correct absolute URL (botapi.max.ru).
+        bot._client.request = self._ok()
         await bot.send_callback(callback_id="cb123", notification="ok")
 
-        post_call = mock_session.post.call_args
-        headers = post_call[1].get("headers") or {}
-        assert headers.get("Authorization") == "test_token"
-        assert "access_token" not in str(post_call)
+        path = bot._client.request.call_args.args[0]
+        assert "botapi.max.ru" in path
+        assert "answers" in path
+        # access_token must NOT appear in the call args
+        assert "access_token" not in str(bot._client.request.call_args)
 
     @pytest.mark.asyncio
     async def test_empty_body_fallback_notification(self, bot):
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.text = AsyncMock(return_value='{"success": true}')
-        mock_resp.json = AsyncMock(return_value={"success": True})
-        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_resp.__aexit__ = AsyncMock(return_value=False)
-
-        mock_session = AsyncMock()
-        mock_session.post = MagicMock(return_value=mock_resp)
-        bot._client._get_session = AsyncMock(return_value=mock_session)
-
-        # No message or notification passed — body should get empty notification
+        # No message or notification — body must contain {"notification": ""}
+        bot._client.request = self._ok()
         await bot.send_callback(callback_id="cb123")
 
-        post_call = mock_session.post.call_args
-        sent_json = post_call[1].get("json") or {}
-        assert "notification" in sent_json
+        body = bot._client.request.call_args.kwargs.get("body", {})
+        assert "notification" in body
 
     @pytest.mark.asyncio
     async def test_message_body_sent_correctly(self, bot):
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.text = AsyncMock(return_value='{"success": true}')
-        mock_resp.json = AsyncMock(return_value={"success": True})
-        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_resp.__aexit__ = AsyncMock(return_value=False)
-
-        mock_session = AsyncMock()
-        mock_session.post = MagicMock(return_value=mock_resp)
-        bot._client._get_session = AsyncMock(return_value=mock_session)
-
+        bot._client.request = self._ok()
         await bot.send_callback(callback_id="cb123", message="Hello!")
 
-        post_call = mock_session.post.call_args
-        sent_json = post_call[1].get("json") or {}
-        assert sent_json.get("message", {}).get("text") == "Hello!"
+        body = bot._client.request.call_args.kwargs.get("body", {})
+        assert body.get("message", {}).get("text") == "Hello!"
 
     @pytest.mark.asyncio
     async def test_callback_id_in_query_params(self, bot):
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.text = AsyncMock(return_value='{"success": true}')
-        mock_resp.json = AsyncMock(return_value={"success": True})
-        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_resp.__aexit__ = AsyncMock(return_value=False)
-
-        mock_session = AsyncMock()
-        mock_session.post = MagicMock(return_value=mock_resp)
-        bot._client._get_session = AsyncMock(return_value=mock_session)
-
+        bot._client.request = self._ok()
         await bot.send_callback(callback_id="MY_CB_ID", notification="hi")
 
-        post_call = mock_session.post.call_args
-        params = post_call[1].get("params") or {}
+        params = bot._client.request.call_args.kwargs.get("params", {})
         assert params.get("callback_id") == "MY_CB_ID"
 
     @pytest.mark.asyncio
-    async def test_http_error_raises_api_error(self, bot):
-        mock_resp = AsyncMock()
-        mock_resp.status = 401
-        mock_resp.text = AsyncMock(return_value='{"error": "Unauthorized"}')
-        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_resp.__aexit__ = AsyncMock(return_value=False)
-
-        mock_session = AsyncMock()
-        mock_session.post = MagicMock(return_value=mock_resp)
-        bot._client._get_session = AsyncMock(return_value=mock_session)
-
+    async def test_http_error_raises_exception(self, bot):
+        from aioscam.exceptions import ApiError
+        bot._client.request = AsyncMock(side_effect=ApiError("HTTP 401"))
         with pytest.raises(ApiError):
             await bot.send_callback(callback_id="cb123", notification="x")
 
     @pytest.mark.asyncio
-    async def test_non_json_response_returns_raw(self, bot):
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.text = AsyncMock(return_value="OK")
-        mock_resp.json = AsyncMock(side_effect=Exception("not json"))
-        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_resp.__aexit__ = AsyncMock(return_value=False)
+    async def test_notification_in_body(self, bot):
+        bot._client.request = self._ok()
+        await bot.send_callback(callback_id="cb123", notification="Popup!")
 
-        mock_session = AsyncMock()
-        mock_session.post = MagicMock(return_value=mock_resp)
-        bot._client._get_session = AsyncMock(return_value=mock_session)
-
-        result = await bot.send_callback(callback_id="cb123", notification="x")
-        assert result == {"raw": "OK"}
+        body = bot._client.request.call_args.kwargs.get("body", {})
+        assert body.get("notification") == "Popup!"
 
 
 # ─── _ensure_branding ────────────────────────────────────────────────────────
