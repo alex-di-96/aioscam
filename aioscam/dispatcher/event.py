@@ -239,15 +239,17 @@ class EventContext:
 
     async def answer(self, text: str, autosplit: bool = False, **kwargs: Any) -> Any:
         """
-        Answer to event message
+        Answer to event message.
 
         Args:
             text: Message text
-            autosplit: If True, splits message into multiple parts
-            **kwargs: Additional send_message parameters
+            autosplit: Split text >4000 chars into multiple messages.
+                       Keyboard/attachments appear only on the last part.
+                       Default False — send as-is (API rejects if >4000 chars).
+            **kwargs: Forwarded to bot.send_message() (keyboard, format, etc.)
 
         Returns:
-            Sent message
+            Sent message data (last part if autosplit=True)
         """
         # Use properties that already handle all fallback cases (incl. bot_started)
         user_id = self.user_id

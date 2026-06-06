@@ -146,6 +146,7 @@ class Bot:
         keyboard: Optional[Dict[str, Any]] = None,
         format: Optional[str] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
+        autosplit: bool = False,
         **kwargs,
     ) -> Dict[str, Any]:
         """
@@ -159,13 +160,17 @@ class Bot:
             keyboard: Inline keyboard (will be added to attachments)
             format: Text format — "markdown" or "html" (per official SDK)
             attachments: Extra attachment dicts (e.g. from process_input_media)
+            autosplit: If True, split messages longer than 4000 chars into multiple
+                       parts and place keyboard/attachments on the last part only.
+                       If False (default), send text as-is (API may reject if >4000).
             **kwargs: Additional parameters
 
         Returns:
             Sent message data
         """
-        # Auto-split: Max API limits message text to 4000 chars
-        if text and len(text) > MAX_TEXT_LENGTH:
+        # autosplit=True: split long text into 4000-char chunks,
+        # keyboard and attachments go to the last chunk only
+        if autosplit and text and len(text) > MAX_TEXT_LENGTH:
             chunks = [text[i:i + MAX_TEXT_LENGTH] for i in range(0, len(text), MAX_TEXT_LENGTH)]
             result: Dict[str, Any] = {}
             for i, chunk in enumerate(chunks):
@@ -178,6 +183,7 @@ class Bot:
                     keyboard=keyboard if is_last else None,
                     format=format,
                     attachments=attachments if is_last else None,
+                    autosplit=False,  # chunks are already within limit
                     **(kwargs if is_last else {}),
                 )
             return result

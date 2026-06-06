@@ -26,24 +26,33 @@ class TestSendMessageSplit:
         assert bot.execute.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_long_text_split_into_chunks(self, bot):
+    async def test_long_text_no_split_by_default(self, bot):
+        # autosplit=False (default): long text sent as-is in one call
         long_text = "A" * (MAX_TEXT_LENGTH + 500)
         bot.execute = AsyncMock(return_value={"id": 1})
         await bot.send_message(chat_id=1, text=long_text)
+        assert bot.execute.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_long_text_split_into_chunks_with_autosplit(self, bot):
+        # autosplit=True: text > 4000 chars → split into 2 calls
+        long_text = "A" * (MAX_TEXT_LENGTH + 500)
+        bot.execute = AsyncMock(return_value={"id": 1})
+        await bot.send_message(chat_id=1, text=long_text, autosplit=True)
         assert bot.execute.call_count == 2
 
     @pytest.mark.asyncio
     async def test_exactly_max_length_not_split(self, bot):
         text = "B" * MAX_TEXT_LENGTH
         bot.execute = AsyncMock(return_value={"id": 1})
-        await bot.send_message(chat_id=1, text=text)
+        await bot.send_message(chat_id=1, text=text, autosplit=True)
         assert bot.execute.call_count == 1
 
     @pytest.mark.asyncio
     async def test_three_chunks_for_very_long_text(self, bot):
         long_text = "C" * (MAX_TEXT_LENGTH * 2 + 1)
         bot.execute = AsyncMock(return_value={"id": 1})
-        await bot.send_message(chat_id=1, text=long_text)
+        await bot.send_message(chat_id=1, text=long_text, autosplit=True)
         assert bot.execute.call_count == 3
 
     @pytest.mark.asyncio
@@ -51,13 +60,19 @@ class TestSendMessageSplit:
         long_text = "D" * (MAX_TEXT_LENGTH + 100)
         keyboard = {"type": "inline_keyboard", "payload": {"buttons": []}}
         bot._client.request = AsyncMock(return_value=MagicMock(result={"id": 1}))
-        # Force fallback path with kwargs
-        await bot.send_message(chat_id=1, text=long_text, keyboard=keyboard, notify=True)
+        await bot.send_message(chat_id=1, text=long_text, keyboard=keyboard,
+                               autosplit=True, notify=True)
         calls = bot._client.request.call_args_list
         assert len(calls) == 2
-        # First chunk body should NOT have non-empty attachments with keyboard
-        first_body = calls[0][1].get("body") or calls[0][0][2] if len(calls[0][0]) > 2 else {}
-        last_body = calls[1][1].get("body") or calls[1][0][2] if len(calls[1][0]) > 2 else {}
+        first_body = calls[0][1].get("body", {})
+        last_body = calls[1][1].get("body", {})
+        # Keyboard must be absent from first chunk, present in last
+        first_atts = [a for a in first_body.get("attachments", [])
+                      if a.get("type") == "inline_keyboard"]
+        last_atts = [a for a in last_body.get("attachments", [])
+                     if a.get("type") == "inline_keyboard"]
+        assert first_atts == []
+        assert len(last_atts) == 1
 
 
 # ─── edit_message truncation ────────────────────────────────────────────────
