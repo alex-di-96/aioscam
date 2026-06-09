@@ -1,6 +1,6 @@
 # AioScam — Documentation (EN)
 
-**v0.1.7** | [Русский](../ru/README.md)
+**v0.1.8** | [Русский](../ru/README.md)
 
 ## Table of Contents
 
@@ -97,7 +97,7 @@ aioscam/
 await bot.send_message(chat_id=123, user_id=456, text="Hello!", format="markdown")
 await bot.edit_message(message_id="mid.abc", text="Updated text")
 await bot.delete_message(message_id="mid.abc")
-await bot.send_action(chat_id=123, action=SenderAction.TYPING)
+await bot.send_action(chat_id=123, action=SenderAction.TYPING_ON)
 ```
 
 ### Chats & Users

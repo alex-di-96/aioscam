@@ -49,7 +49,7 @@ import logging
 
 from aioscam import Bot, Dispatcher, Router, Command, BotCommand
 from aioscam.utils.keyboard import KeyboardBuilder
-from aioscam.enums import ButtonType
+# ButtonType enum available via: from aioscam.enums import ButtonType
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 

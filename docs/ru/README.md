@@ -1,6 +1,6 @@
 # AioScam — Документация (RU)
 
-**v0.1.7** | [English](../en/README.md)
+**v0.1.8** | [English](../en/README.md)
 
 ## Оглавление
 
@@ -110,7 +110,7 @@ aioscam/
 await bot.send_message(chat_id=123, user_id=456, text="Привет!", format="markdown")
 await bot.edit_message(message_id="mid.abc", text="Новый текст")
 await bot.delete_message(message_id="mid.abc")
-await bot.send_action(chat_id=123, action=SenderAction.TYPING)
+await bot.send_action(chat_id=123, action=SenderAction.TYPING_ON)
 ```
 
 ### Медиафайлы
@@ -140,7 +140,7 @@ await bot.download_file(path, url, token)          # → HTTP status code
 
 ```python
 await bot.send_callback(callback_id=..., message="Ответ", notification="Попап")
-await bot.send_action(chat_id=123, action=SenderAction.TYPING)
+await bot.send_action(chat_id=123, action=SenderAction.TYPING_ON)
 ```
 
 ### Чаты и пользователи

@@ -66,7 +66,7 @@ bot = Bot(timeout=60)
 #### Bot Methods
 
 - `get_me()` - Get bot information
-- `send_message(chat_id, text, keyboard, format)` - Send text message
+- `send_message(chat_id, text, keyboard, format, autosplit=False)` - Send text message; autosplit=True splits text >4000 chars into multiple messages
 - `edit_message(chat_id, message_id, text)` - Edit message
 - `delete_message(message_id)` - Delete message (matches Go SDK)
 - `get_message(message_id)` - Get single message
@@ -340,7 +340,7 @@ except NetworkError as e:
 
 - `ChatType` - private, group, supergroup, channel
 - `UpdateType` - All update types
-- `SenderAction` - typing, upload_photo, etc.
+- `SenderAction` - TYPING_ON, SENDING_PHOTO, SENDING_VIDEO, SENDING_AUDIO, SENDING_FILE, MARK_SEEN
 - `ParseMode` - none, markdown, html
 - `ButtonType` - callback, link, chat, etc.
 

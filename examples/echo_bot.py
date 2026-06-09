@@ -109,7 +109,7 @@ async def echo_message(event):
     """
     Catch-all handler — echoes any text message.
 
-    SenderAction.TYPING shows a '✍️ typing...' indicator in the chat
+    SenderAction.TYPING_ON shows a '✍️ typing...' indicator in the chat
     before the bot replies. Max API ignores the request gracefully if
     the chat_id is not reachable.
     """

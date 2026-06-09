@@ -440,11 +440,8 @@ async def logging_middleware(event, handler):
 async def typing_middleware(event, handler):
     """Middleware для показа typing индикатора"""
     try:
-        if hasattr(event, 'message') and event.message and event.message.chat:
-            await event.bot.send_action(
-                event.message.chat.id,
-                SenderAction.TYPING
-            )
+        if event.chat_id:
+            await event.bot.send_action(event.chat_id, SenderAction.TYPING_ON)
     except:
         pass  # Игнорируем ошибки typing
     
