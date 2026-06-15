@@ -104,19 +104,6 @@ aioscam/
 
 ## Bot
 
-### Инициализация
-
-```python
-bot = Bot(
-    token="...",            # или MAX_BOT_TOKEN из env
-    auto_brand=True,         # добавляет "[Powered by AioScam vX.Y.Z]" в description бота при старте
-    auto_telemetry=True,     # анонимный fire-and-forget пинг (версия + bot_id) при старте polling/webhook
-)
-```
-
-Оба флага независимы и по умолчанию включены, отключаются явно (`auto_brand=False`, `auto_telemetry=False`).
-Телеметрия не влияет на работу бота: таймаут 5с, любые ошибки/недоступность сервера молча игнорируются.
-
 ### Сообщения
 
 ```python

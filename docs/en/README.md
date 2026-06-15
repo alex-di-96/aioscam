@@ -244,6 +244,24 @@ data = await state.get_data()
 await state.set_state(None)
 ```
 
+**StateGuard** — blocks commands and callback buttons during an active FSM state:
+```python
+from magic_filter import F
+
+dp = Dispatcher(
+    state_guard_commands={'/cancel', '/start'},
+    state_guard_callbacks=[
+        'action:cancel',                # exact match
+        F.startswith('confirm_'),       # also matches "confirm_yes|52507"
+        F.regexp(r'^nav:(back|next)$'),
+    ],
+    state_guard_hint_func=lambda s: "expected input",
+)
+```
+`state_guard_callbacks` — a list of strings (exact match) and/or `magic_filter.F` expressions
+(`.startswith()`, `.contains()`, `.regexp()`, combinable via `& | ~`).
+Use a list, not a `set` — `F` expressions are unhashable.
+
 ---
 
 ## Middleware
