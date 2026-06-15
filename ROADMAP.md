@@ -266,6 +266,6 @@ Fix: added `quote(payload, safe='')` to the group deep link URL.
   - `python-dotenv` ⚠️ — сомнительно, можно `os.getenv()` + пользователь сам загружает
 
 ### Community
-- [ ] ☕ **Buy me a cookie** — добавить Boosty/Patreon ссылку в README ✅ (done)
+- [x] ☕ **Buy me a cookie** — Boosty-ссылка в README (2026-06-15: исправлена на реальный профиль `boosty.to/alex.di/donate`)
 - [ ] GitHub Sponsors
 - [ ] Open Collective

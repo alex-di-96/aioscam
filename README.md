@@ -217,7 +217,7 @@ MIT License — [aLex Di](https://github.com/alex-di-96)
 
 If you find AioScam useful and want to support its development, consider:
 
-- 🍪 **Buy me a cookie** — [Boosty](https://boosty.to/your-profile)
+- 🍪 **Buy me a cookie** — [Boosty](https://boosty.to/alex.di/donate)
 - ⭐ **Star the repo** — it helps with visibility
 - 🐛 **Report bugs** — open issues for any problems you find
 - 🤝 **Contribute** — PRs welcome!
