@@ -399,4 +399,4 @@ See `examples/` directory (15 bots):
 
 ## License
 
-MIT License
+[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — free for personal, educational, and other noncommercial use. Commercial use requires a separate license.

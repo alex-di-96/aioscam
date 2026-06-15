@@ -211,7 +211,9 @@ python -m pytest tests/ -v
 
 ## License
 
-MIT License — [aLex Di](https://github.com/alex-di-96)
+[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — [aLex Di](https://github.com/alex-di-96)
+
+Free for personal, educational, and other noncommercial use. Commercial use requires a separate license — contact the author.
 
 ## ☕ Support the Project
 
