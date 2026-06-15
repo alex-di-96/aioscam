@@ -1,6 +1,15 @@
 # AioScam Roadmap
 
-## Unreleased
+## v0.1.8 — Current (2026-06-15)
+
+### StateGuard regex/like/and-or callbacks (2026-06-15)
+
+`state_guard_callbacks` now accepts `magic_filter.F` expressions
+(`.startswith()`, `.contains()`, `.regexp()`, `& | ~`) alongside exact-match
+strings — found via ToirBot (`confirm_yes|52507` didn't match `{"confirm_yes"}`).
+Additive, backward compatible. Matcher: `Dispatcher._callback_guard_allowed()`.
+Tests: `tests/test_v015.py::TestCallbackGuardMatcher` (6 tests).
+Documented in `docs/ru/README.md` and `docs/en/README.md` (FSM/StateGuard section).
 
 ### Telemetry + auto_telemetry flag (2026-06-15)
 
@@ -17,8 +26,6 @@ on `start_polling()` / `handle_webhook()` start.
 - Opt-out: `Bot(auto_telemetry=False)`
 - No new dependencies — reuses `aiohttp` session via `AioScamClient._get_session()`
 - Tests: `tests/test_bot_send.py::TestSendTelemetry` (5 tests)
-
-## v0.1.8 — Current (2026-06-04)
 
 ### Live testing session — bugs found (2026-06-04)
 
@@ -200,14 +207,12 @@ Fix: added `quote(payload, safe='')` to the group deep link URL.
 
 ## Planned
 
-### v0.1.8
+### v0.2.0
 - [ ] `forward_message()` метод
 - [ ] `reply_to` параметр в `send_message()`
 - [ ] Poll types (`poll`, `quiz` в API)
 - [ ] `delete_messages()` — batch delete
 - [ ] CI/CD (GitHub Actions)
-
-### v0.2.0
 - [ ] Scene system (иерархический FSM)
 - [ ] Webhook документация (FastAPI, Litestar примеры)
 - [ ] Пагинация для `get_chats()`, `get_messages()`

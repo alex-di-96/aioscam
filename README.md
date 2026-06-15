@@ -4,18 +4,17 @@ Async Python framework for building Max messenger bots, inspired by aiogram arch
 
 ## Version
 
-**v0.1.7** — Latest (2026-05-28)
+**v0.1.8** — Latest (2026-06-15)
 
-### What's new in v0.1.7
-- ✅ **Media support** — `send_photo()`, `send_video()`, `send_audio()`, `send_document()`, `send_media()`
-- ✅ **`download_file_bytes()`** — download media into memory (no temp file)
-- ✅ **`make_temp_path()`** — unique datetime-stamped temp filenames
-- ✅ **`InputMedia(path)`** — auto-detects type from extension
-- ✅ **`InputMediaBuffer(buffer, filename)`** — upload from bytes buffer
-- ✅ **Image FSM demo** — `ImageState`, PIL flip+resize+watermark flow in demo_bot
-- ✅ **Registration phone step** — 4-step FSM with `RequestContactButton`
-- ✅ **Locale persistence** — language choice saved in FSM state
-- ✅ **202/202 tests passing**
+### What's new in v0.1.8
+- ✅ **`send_action()`** — fixed API path (`/chats/{chat_id}/actions`) and `SenderAction` values
+- ✅ **`SendCallback`** method object — answer callback queries via `bot.send_callback()`
+- ✅ **`send_message(autosplit=True)`** — opt-in splitting of messages >4000 chars, keyboard on last chunk
+- ✅ **StateGuard callbacks** — `state_guard_callbacks` now accepts `magic_filter.F` expressions
+  (`.startswith()`, `.contains()`, `.regexp()`, `& | ~`) alongside exact-match strings
+- ✅ **Parallel update processing** — `asyncio.create_task()` per update in `start_polling()`
+- ✅ **Streaming uploads/downloads** — no full in-memory reads for media
+- ✅ **569/569 tests passing**
 
 ## Features
 
