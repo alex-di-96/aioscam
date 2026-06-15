@@ -25,6 +25,12 @@ from aioscam.types.message import Message, MessageBody, Recipient
 from aioscam.utils.keyboard import KeyboardBuilder
 
 
+def _make_bot():
+    bot = Bot(token="test_token")
+    bot._client.request = AsyncMock(return_value=MagicMock(result={}, ok=True))
+    return bot
+
+
 class TestNewEventDecorators:
     """Test all 11 new event decorators"""
 
@@ -364,6 +370,90 @@ class TestStateGuardConfig:
 
         assert 'action:back' in dp._guard_allowed_callbacks
         assert 'action:stats' not in dp._guard_allowed_callbacks
+
+
+class TestCallbackGuardMatcher:
+    """Test Dispatcher._callback_guard_allowed — exact strings + MagicFilter patterns"""
+
+    def test_exact_string_match(self):
+        allowed = {'action:cancel'}
+        assert Dispatcher._callback_guard_allowed('action:cancel', allowed) is True
+        assert Dispatcher._callback_guard_allowed('action:cancel|1', allowed) is False
+
+    def test_magicfilter_startswith_matches_payload_with_params(self):
+        allowed = [F.startswith('confirm_yes')]
+        assert Dispatcher._callback_guard_allowed('confirm_yes|52507', allowed) is True
+        assert Dispatcher._callback_guard_allowed('confirm_no|52507', allowed) is False
+
+    def test_magicfilter_regexp(self):
+        allowed = [F.regexp(r'^nav:(back|next)$')]
+        assert Dispatcher._callback_guard_allowed('nav:back', allowed) is True
+        assert Dispatcher._callback_guard_allowed('nav:sideways', allowed) is False
+
+    def test_magicfilter_and_or_not(self):
+        allowed = [F.startswith('confirm_') & ~F.contains('admin')]
+        assert Dispatcher._callback_guard_allowed('confirm_yes|1', allowed) is True
+        assert Dispatcher._callback_guard_allowed('confirm_admin|1', allowed) is False
+
+    def test_mixed_string_and_magicfilter(self):
+        allowed = ['action:cancel', F.startswith('confirm_')]
+        assert Dispatcher._callback_guard_allowed('action:cancel', allowed) is True
+        assert Dispatcher._callback_guard_allowed('confirm_yes|1', allowed) is True
+        assert Dispatcher._callback_guard_allowed('menu_back', allowed) is False
+
+    @pytest.mark.asyncio
+    async def test_process_callback_allows_magicfilter_match_during_fsm(self):
+        from aioscam.fsm.memory import MemoryStorage
+        from aioscam.types.update import Update
+
+        storage = MemoryStorage()
+        dp = Dispatcher(storage=storage, state_guard_callbacks=[F.startswith('confirm_')])
+
+        @dp.callback_query()
+        async def h(event):
+            return "ok"
+
+        await storage.set_state(10, "Form:step1", user_id=1)
+
+        update = Update(
+            update_type="message_callback",
+            callback={"callback_id": "cb1", "data": "confirm_yes|52507", "user": {"user_id": 1}},
+            chat_id=10,
+            timestamp=1,
+        )
+
+        bot = _make_bot()
+        bot.send_message = AsyncMock(return_value={})
+        result = await dp._process_update(bot, update)
+
+        bot.send_message.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_callback_blocks_unmatched_during_fsm(self):
+        from aioscam.fsm.memory import MemoryStorage
+        from aioscam.types.update import Update
+
+        storage = MemoryStorage()
+        dp = Dispatcher(storage=storage, state_guard_callbacks=[F.startswith('confirm_')])
+
+        @dp.callback_query()
+        async def h(event):
+            return "ok"
+
+        await storage.set_state(10, "Form:step1", user_id=1)
+
+        update = Update(
+            update_type="message_callback",
+            callback={"callback_id": "cb1", "data": "menu_back", "user": {"user_id": 1}},
+            chat_id=10,
+            timestamp=1,
+        )
+
+        bot = _make_bot()
+        bot.send_message = AsyncMock(return_value={})
+        await dp._process_update(bot, update)
+
+        bot.send_message.assert_called_once()
 
     def test_custom_hint_func(self):
         """Test custom hint function"""

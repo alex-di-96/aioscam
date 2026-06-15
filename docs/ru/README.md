@@ -104,6 +104,19 @@ aioscam/
 
 ## Bot
 
+### Инициализация
+
+```python
+bot = Bot(
+    token="...",            # или MAX_BOT_TOKEN из env
+    auto_brand=True,         # добавляет "[Powered by AioScam vX.Y.Z]" в description бота при старте
+    auto_telemetry=True,     # анонимный fire-and-forget пинг (версия + bot_id) при старте polling/webhook
+)
+```
+
+Оба флага независимы и по умолчанию включены, отключаются явно (`auto_brand=False`, `auto_telemetry=False`).
+Телеметрия не влияет на работу бота: таймаут 5с, любые ошибки/недоступность сервера молча игнорируются.
+
 ### Сообщения
 
 ```python
@@ -360,14 +373,23 @@ current = await state.get_state()  # "MyState:waiting_name"
 await state.set_state(None)      # сброс
 ```
 
-**StateGuard** — блокирует команды во время активного FSM состояния:
+**StateGuard** — блокирует команды и callback-кнопки во время активного FSM состояния:
 ```python
+from magic_filter import F
+
 dp = Dispatcher(
     state_guard_commands={'/cancel', '/start'},
-    state_guard_callbacks={'action:cancel'},
+    state_guard_callbacks=[
+        'action:cancel',                # exact match
+        F.startswith('confirm_'),       # "confirm_yes|52507" — тоже пройдёт
+        F.regexp(r'^nav:(back|next)$'),
+    ],
     state_guard_hint_func=lambda s: "имя пользователя",
 )
 ```
+`state_guard_callbacks` — список из строк (exact match) и/или `magic_filter.F` выражений
+(`.startswith()`, `.contains()`, `.regexp()`, комбинируются через `&` / `|` / `~`).
+Список, а не `set` — `F`-выражения нехэшируемы.
 
 ---
 

@@ -1,5 +1,23 @@
 # AioScam Roadmap
 
+## Unreleased
+
+### Telemetry + auto_telemetry flag (2026-06-15)
+
+`Bot(auto_telemetry=True)` (default on, independent from `auto_brand`):
+fire-and-forget anonymous usage ping `POST https://yasvc.ru/cgi-bin/botlog`
+on `start_polling()` / `handle_webhook()` start.
+
+- Payload: `{"event": "polling_start"|"webhook_start", "version": __version__, "bot_id": <int|None>}`
+  (`bot_id` only included if `_me` already cached, e.g. via `_ensure_branding`)
+- `Bot._send_telemetry()` (`aioscam/bot/bot.py`): `timeout=5s`, `allow_redirects=False`,
+  all exceptions (connection errors, timeouts) silently swallowed — never affects bot operation
+- Sent via `asyncio.create_task()` (not awaited) from `Dispatcher.start_polling`/`handle_webhook`
+  (`aioscam/dispatcher/dispatcher.py`), wrapped in `try/except TypeError` for mocked bots in tests
+- Opt-out: `Bot(auto_telemetry=False)`
+- No new dependencies — reuses `aiohttp` session via `AioScamClient._get_session()`
+- Tests: `tests/test_bot_send.py::TestSendTelemetry` (5 tests)
+
 ## v0.1.8 — Current (2026-06-04)
 
 ### Live testing session — bugs found (2026-06-04)
@@ -193,6 +211,34 @@ Fix: added `quote(payload, safe='')` to the group deep link URL.
 - [ ] Scene system (иерархический FSM)
 - [ ] Webhook документация (FastAPI, Litestar примеры)
 - [ ] Пагинация для `get_chats()`, `get_messages()`
+- [x] **StateGuard — regex/like/and-or для `state_guard_callbacks`** (найдено в ToirBot 2026-06-10, реализовано 2026-06-15)
+
+  Было: `process_callback` сравнивал **полный** `event.callback_data` с `state_guard_callbacks`
+  только через exact match. Реальные callback'и часто несут параметр через `|`, например
+  `confirm_yes|52507`, который не матчился с `{"confirm_yes"}`.
+
+  **Реализовано** (аддитивно, обратная совместимость сохранена):
+  `_guard_allowed_callbacks` теперь принимает элементы двух видов:
+  - `str` — exact match как раньше (`"action:cancel"`)
+  - `magic_filter.F` выражение — резолвится против полного payload, поддерживает
+    `.startswith()`, `.contains()`, `.regexp()` и комбинации `&` / `|` / `~`:
+
+    ```python
+    from magic_filter import F
+
+    dp = Dispatcher(state_guard_callbacks=[
+        "action:cancel",
+        F.startswith("confirm_"),
+        F.regexp(r"^nav:(back|next)$"),
+        F.startswith("menu_") & ~F.contains("admin"),
+    ])
+    ```
+
+  Матчер: `Dispatcher._callback_guard_allowed(payload, allowed)` (`dispatcher/dispatcher.py`).
+  Тесты: `tests/test_v015.py::TestCallbackGuardMatcher` (6 тестов).
+
+  **Важно:** `state_guard_callbacks` со смешанными типами (`str` + `F`) нельзя передавать как `set`
+  (`MagicFilter` нехэшируем) — использовать `list`.
 
 ### Future
 - [ ] Plugin system

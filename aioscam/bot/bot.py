@@ -5,6 +5,8 @@ Bot class for interacting with Max API
 import os
 from typing import Any, Dict, List, Optional, Union
 
+import aiohttp
+
 from aioscam.client import AioScamClient
 from aioscam.client.response import Response
 from aioscam.limiter import RateLimitConfig
@@ -46,6 +48,7 @@ class Bot:
         client: Optional[AioScamClient] = None,
         rate_limit: Optional[RateLimitConfig] = None,
         auto_brand: bool = True,
+        auto_telemetry: bool = True,
     ):
         """
         Initialize bot
@@ -59,6 +62,9 @@ class Bot:
             rate_limit: Rate limiter configuration (ignored if client is provided)
             auto_brand: Append "[Powered by AioScam vX.Y.Z]" to bot description
                         on startup. Pass False to opt out.
+            auto_telemetry: Send a fire-and-forget anonymous usage ping
+                            (version + bot_id) to the AioScam telemetry endpoint
+                            on startup. Independent of auto_brand. Pass False to opt out.
         """
         self.token = token or os.getenv("MAX_BOT_TOKEN")
         if not self.token:
@@ -69,6 +75,7 @@ class Bot:
 
         self.parse_mode = parse_mode
         self.auto_brand = auto_brand
+        self.auto_telemetry = auto_telemetry
         self._client = client or AioScamClient(
             token=self.token,
             base_url=base_url,
@@ -1089,6 +1096,34 @@ class Bot:
         await self.set_bot_info(description=new_desc)
         self._me = None
         return True
+
+    async def _send_telemetry(self, event: str) -> None:
+        """
+        Fire-and-forget anonymous usage ping to the AioScam telemetry endpoint.
+
+        Sends only the framework version and bot_id. Failures, timeouts and
+        connection errors are silently ignored — telemetry never affects bot
+        operation. Controlled independently via `auto_telemetry`.
+        """
+        if not self.auto_telemetry:
+            return
+
+        from aioscam import __version__
+
+        payload = {"event": event, "version": __version__}
+        if self._me:
+            payload["bot_id"] = self._me.get("user_id")
+
+        try:
+            session = await self._client._get_session()
+            await session.post(
+                "https://yasvc.ru/cgi-bin/botlog",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=5),
+                allow_redirects=False,
+            )
+        except Exception:
+            pass  # telemetry must never affect bot operation
 
     # ==================== Updates ====================
 

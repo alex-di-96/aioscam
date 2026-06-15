@@ -6,7 +6,9 @@ import asyncio
 import inspect
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
+
+from magic_filter import MagicFilter
 
 from aioscam.bot import Bot
 from aioscam.dispatcher.router import Router
@@ -40,7 +42,7 @@ class Dispatcher(Router):
         self,
         storage: Optional[BaseStorage] = None,
         state_guard_commands: Optional[set] = None,
-        state_guard_callbacks: Optional[set] = None,
+        state_guard_callbacks: Optional[Iterable] = None,
         state_guard_hint_func: Optional[Any] = None,
     ):
         from aioscam.config import get_config
@@ -55,12 +57,34 @@ class Dispatcher(Router):
 
         # StateGuard configuration (customizable)
         self._guard_allowed_commands = state_guard_commands or {'/cancel', '/start'}
+        # Items: str (exact match) or magic_filter.F expression (startswith/contains/regexp, & | ~)
         self._guard_allowed_callbacks = state_guard_callbacks or {'action:cancel'}
         self._guard_hint_func = state_guard_hint_func  # callable: state_name -> hint text
 
         # Setup logging based on environment config
         config = get_config()
         config.setup_logging("aioscam")
+
+    @staticmethod
+    def _callback_guard_allowed(payload: str, allowed: set) -> bool:
+        """
+        Check whether callback payload is allowed during active FSM state.
+
+        Each item in `allowed` can be:
+          - str: exact match against the full payload (backward compatible)
+          - MagicFilter (from magic_filter, e.g. F.startswith/.contains/.regexp,
+            combinable via & | ~): resolved against the full payload
+        """
+        for item in allowed:
+            if isinstance(item, MagicFilter):
+                try:
+                    if item.resolve(payload):
+                        return True
+                except Exception:
+                    continue
+            elif payload == item:
+                return True
+        return False
 
     def _get_state_hint(self, state_name: str) -> str:
         """Get hint text for current FSM state."""
@@ -170,7 +194,7 @@ class Dispatcher(Router):
             payload = str(payload) if payload else ''
 
         if payload:
-            if payload not in self._guard_allowed_callbacks:
+            if not self._callback_guard_allowed(payload, self._guard_allowed_callbacks):
                 current = await state_ctx.get_state()
                 if current:
                     hint = self._get_state_hint(current)
@@ -230,6 +254,13 @@ class Dispatcher(Router):
                     logger.info("Bot description branded with AioScam version tag")
             except Exception as e:
                 logger.debug(f"Auto-branding skipped: {e}")
+
+        # Telemetry: fire-and-forget anonymous usage ping (independent of auto_brand)
+        if getattr(bot, 'auto_telemetry', True):
+            try:
+                asyncio.create_task(bot._send_telemetry("polling_start"))
+            except TypeError:
+                pass
 
         # Delete webhook if active
         try:
@@ -407,6 +438,12 @@ class Dispatcher(Router):
             except Exception as e:
                 logger.debug(f"Auto-branding skipped: {e}")
 
+        # Telemetry: fire-and-forget anonymous usage ping (independent of auto_brand)
+        if getattr(bot, 'auto_telemetry', True):
+            try:
+                asyncio.create_task(bot._send_telemetry("webhook_start"))
+            except TypeError:
+                pass
 
         self._webhook_secret = secret_token
         self._webhook_stop_event = asyncio.Event()

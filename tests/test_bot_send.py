@@ -288,3 +288,67 @@ class TestRemoveBranding:
         call_args = bot.set_bot_info.call_args
         new_desc = call_args.kwargs.get("description", "")
         assert not new_desc.endswith("\n")
+
+
+# ─── _send_telemetry ─────────────────────────────────────────────────────────
+
+class TestSendTelemetry:
+
+    @pytest.mark.asyncio
+    async def test_sends_version_and_event(self, bot):
+        from aioscam import __version__
+
+        mock_session = MagicMock()
+        mock_session.post = AsyncMock()
+        bot._client._get_session = AsyncMock(return_value=mock_session)
+
+        await bot._send_telemetry("polling_start")
+
+        mock_session.post.assert_called_once()
+        call_args = mock_session.post.call_args
+        assert call_args.args[0] == "https://yasvc.ru/cgi-bin/botlog"
+        payload = call_args.kwargs.get("json")
+        assert payload["event"] == "polling_start"
+        assert payload["version"] == __version__
+        assert call_args.kwargs.get("allow_redirects") is False
+
+    @pytest.mark.asyncio
+    async def test_includes_bot_id_when_cached(self, bot):
+        bot._me = {"user_id": 12345, "name": "TestBot"}
+
+        mock_session = MagicMock()
+        mock_session.post = AsyncMock()
+        bot._client._get_session = AsyncMock(return_value=mock_session)
+
+        await bot._send_telemetry("webhook_start")
+
+        payload = mock_session.post.call_args.kwargs.get("json")
+        assert payload["bot_id"] == 12345
+
+    @pytest.mark.asyncio
+    async def test_disabled_via_auto_telemetry_false(self, bot):
+        bot.auto_telemetry = False
+
+        mock_session = MagicMock()
+        mock_session.post = AsyncMock()
+        bot._client._get_session = AsyncMock(return_value=mock_session)
+
+        await bot._send_telemetry("polling_start")
+
+        mock_session.post.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_swallows_connection_errors(self, bot):
+        bot._client._get_session = AsyncMock(side_effect=ConnectionError("no network"))
+
+        # Must not raise
+        await bot._send_telemetry("polling_start")
+
+    @pytest.mark.asyncio
+    async def test_swallows_post_timeout(self, bot):
+        mock_session = MagicMock()
+        mock_session.post = AsyncMock(side_effect=TimeoutError())
+        bot._client._get_session = AsyncMock(return_value=mock_session)
+
+        # Must not raise
+        await bot._send_telemetry("polling_start")
