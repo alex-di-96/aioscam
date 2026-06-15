@@ -374,7 +374,6 @@ async def on_repeat_deeplink(event, state):
 ```
 
 > **Note:** `StartCommand()` handlers MUST be registered BEFORE `Command("start")`.
-> See `docs/FIXES_DEEPLINK_2026-05-28.md` for full deep link pattern.
 
 ## Examples
 
