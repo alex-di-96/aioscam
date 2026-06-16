@@ -352,13 +352,13 @@ class TestStateGuardConfig:
         """Test default StateGuard settings"""
         dp = Dispatcher()
 
-        assert dp._guard_allowed_commands == {'/cancel', '/start'}
-        assert dp._guard_allowed_callbacks == {'action:cancel'}
+        assert set(dp._guard_allowed_commands) == {'/cancel', '/start'}
+        assert set(dp._guard_allowed_callbacks) == {'action:cancel'}
         assert dp._guard_hint_func is None
 
     def test_custom_state_guard_commands(self):
         """Test custom StateGuard allowed commands"""
-        dp = Dispatcher(state_guard_commands={'/cancel', '/help', '/commands'})
+        dp = Dispatcher(state_guard_commands=['/cancel', '/help', '/commands'])
 
         assert '/help' in dp._guard_allowed_commands
         assert '/commands' in dp._guard_allowed_commands
@@ -366,7 +366,7 @@ class TestStateGuardConfig:
 
     def test_custom_state_guard_callbacks(self):
         """Test custom StateGuard allowed callbacks"""
-        dp = Dispatcher(state_guard_callbacks={'action:cancel', 'action:back'})
+        dp = Dispatcher(state_guard_callbacks=['action:cancel', 'action:back'])
 
         assert 'action:back' in dp._guard_allowed_callbacks
         assert 'action:stats' not in dp._guard_allowed_callbacks
@@ -468,6 +468,100 @@ class TestCallbackGuardMatcher:
         """Test default hint fallback"""
         dp = Dispatcher()
         assert dp._get_state_hint("SomeState") == "ожидаемые данные"
+
+
+class TestCommandGuardMatcher:
+    """Test Dispatcher._command_guard_allowed — exact strings + MagicFilter patterns"""
+
+    def test_exact_string_match(self):
+        allowed = ['/cancel', '/start']
+        assert Dispatcher._command_guard_allowed('/cancel', allowed) is True
+        assert Dispatcher._command_guard_allowed('/start', allowed) is True
+        assert Dispatcher._command_guard_allowed('/pay', allowed) is False
+
+    def test_exact_match_is_case_sensitive(self):
+        allowed = ['/cancel']
+        assert Dispatcher._command_guard_allowed('/cancel', allowed) is True
+        assert Dispatcher._command_guard_allowed('/Cancel', allowed) is False
+
+    def test_magicfilter_startswith(self):
+        allowed = [F.startswith('/cmd_')]
+        assert Dispatcher._command_guard_allowed('/cmd_15', allowed) is True
+        assert Dispatcher._command_guard_allowed('/cmd_999', allowed) is True
+        assert Dispatcher._command_guard_allowed('/pay_15', allowed) is False
+
+    def test_magicfilter_regexp(self):
+        allowed = [F.regexp(r'^/item_\d+$')]
+        assert Dispatcher._command_guard_allowed('/item_42', allowed) is True
+        assert Dispatcher._command_guard_allowed('/item_abc', allowed) is False
+        assert Dispatcher._command_guard_allowed('/item_', allowed) is False
+
+    def test_magicfilter_and_not(self):
+        allowed = [F.startswith('/nav_') & ~F.contains('admin')]
+        assert Dispatcher._command_guard_allowed('/nav_back', allowed) is True
+        assert Dispatcher._command_guard_allowed('/nav_admin', allowed) is False
+
+    def test_mixed_string_and_magicfilter(self):
+        allowed = ['/cancel', F.startswith('/cmd_')]
+        assert Dispatcher._command_guard_allowed('/cancel', allowed) is True
+        assert Dispatcher._command_guard_allowed('/cmd_15', allowed) is True
+        assert Dispatcher._command_guard_allowed('/pay', allowed) is False
+
+    @pytest.mark.asyncio
+    async def test_process_message_allows_magicfilter_command_during_fsm(self):
+        storage = MemoryStorage()
+        dp = Dispatcher(storage=storage, state_guard_commands=['/cancel', F.startswith('/cmd_')])
+
+        @dp.message_created()
+        async def h(event):
+            return "ok"
+
+        await storage.set_state(10, "Form:step1", user_id=1)
+
+        update = Update(
+            update_type="message_created",
+            message={
+                "sender": {"user_id": 1, "first_name": "Test", "is_bot": False},
+                "recipient": {"chat_id": 10, "chat_type": "dialog", "user_id": 1},
+                "body": {"mid": "mid.1", "text": "/cmd_15"},
+                "timestamp": 1,
+            },
+            timestamp=1,
+        )
+
+        bot = _make_bot()
+        bot.send_message = AsyncMock(return_value={})
+        await dp._process_update(bot, update)
+
+        bot.send_message.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_message_blocks_unmatched_command_during_fsm(self):
+        storage = MemoryStorage()
+        dp = Dispatcher(storage=storage, state_guard_commands=['/cancel', F.startswith('/cmd_')])
+
+        @dp.message_created()
+        async def h(event):
+            return "ok"
+
+        await storage.set_state(10, "Form:step1", user_id=1)
+
+        update = Update(
+            update_type="message_created",
+            message={
+                "sender": {"user_id": 1, "first_name": "Test", "is_bot": False},
+                "recipient": {"chat_id": 10, "chat_type": "dialog", "user_id": 1},
+                "body": {"mid": "mid.2", "text": "/pay"},
+                "timestamp": 1,
+            },
+            timestamp=1,
+        )
+
+        bot = _make_bot()
+        bot.send_message = AsyncMock(return_value={})
+        await dp._process_update(bot, update)
+
+        bot.send_message.assert_called_once()
 
 
 class TestClipboardButtonPayload:

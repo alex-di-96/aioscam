@@ -41,7 +41,7 @@ class Dispatcher(Router):
     def __init__(
         self,
         storage: Optional[BaseStorage] = None,
-        state_guard_commands: Optional[set] = None,
+        state_guard_commands: Optional[Iterable] = None,
         state_guard_callbacks: Optional[Iterable] = None,
         state_guard_hint_func: Optional[Any] = None,
     ):
@@ -56,9 +56,10 @@ class Dispatcher(Router):
         self._webhook_stop_event: Optional[asyncio.Event] = None
 
         # StateGuard configuration (customizable)
-        self._guard_allowed_commands = state_guard_commands or {'/cancel', '/start'}
         # Items: str (exact match) or magic_filter.F expression (startswith/contains/regexp, & | ~)
-        self._guard_allowed_callbacks = state_guard_callbacks or {'action:cancel'}
+        # Use list, not set — MagicFilter is unhashable
+        self._guard_allowed_commands = state_guard_commands or ['/cancel', '/start']
+        self._guard_allowed_callbacks = state_guard_callbacks or ['action:cancel']
         self._guard_hint_func = state_guard_hint_func  # callable: state_name -> hint text
 
         # Setup logging based on environment config
@@ -66,7 +67,28 @@ class Dispatcher(Router):
         config.setup_logging("aioscam")
 
     @staticmethod
-    def _callback_guard_allowed(payload: str, allowed: set) -> bool:
+    def _command_guard_allowed(command: str, allowed: Iterable) -> bool:
+        """
+        Check whether a command is allowed during active FSM state.
+
+        Each item in `allowed` can be:
+          - str: exact match against the command (e.g. '/cancel')
+          - MagicFilter (from magic_filter, e.g. F.startswith/.contains/.regexp,
+            combinable via & | ~): resolved against the command string
+        """
+        for item in allowed:
+            if isinstance(item, MagicFilter):
+                try:
+                    if item.resolve(command):
+                        return True
+                except Exception:
+                    continue
+            elif command == item:
+                return True
+        return False
+
+    @staticmethod
+    def _callback_guard_allowed(payload: str, allowed: Iterable) -> bool:
         """
         Check whether callback payload is allowed during active FSM state.
 
@@ -157,7 +179,7 @@ class Dispatcher(Router):
         text = getattr(event, 'text', '') or ''
         if isinstance(text, str) and text.startswith('/'):
             command = text.split()[0].lower()
-            if command not in self._guard_allowed_commands:
+            if not self._command_guard_allowed(command, self._guard_allowed_commands):
                 current = await state_ctx.get_state()
                 if current:
                     hint = self._get_state_hint(current)
