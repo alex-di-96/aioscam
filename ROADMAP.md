@@ -1,6 +1,15 @@
 # AioScam Roadmap
 
-## v0.1.8 — Current (2026-06-15)
+## v0.1.8.1 — Current (2026-06-16)
+
+### Hotfix: env var names + license (2026-06-16)
+- `Aioscam_ENV` → `AIOSCAM_ENV`, `Aioscam_API_URL` → `AIOSCAM_API_URL` в `aioscam/config.py`
+  (на Linux mixed-case имена не работали — env vars регистро-зависимы)
+- `.env.example` обновлён до v0.1.8.1, исправлены имена переменных
+- Смена лицензии MIT → PolyForm Noncommercial License 1.0.0
+- Удалены внутренние dev-логи из `docs/` (FIXES_*.md, MEDIA_UPLOAD, MAX_BUTTON_FORMATTING)
+
+## v0.1.8 — (2026-06-15)
 
 ### StateGuard regex/like/and-or callbacks (2026-06-15)
 

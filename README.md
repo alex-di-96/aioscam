@@ -4,7 +4,11 @@ Async Python framework for building Max messenger bots, inspired by aiogram arch
 
 ## Version
 
-**v0.1.8** — Latest (2026-06-15)
+**v0.1.8.1** — Latest (2026-06-16)
+
+### What's new in v0.1.8.1
+- ✅ **`AIOSCAM_ENV` / `AIOSCAM_API_URL`** — исправлен регистр env-переменных (`Aioscam_ENV` → `AIOSCAM_ENV`), на Linux mixed-case переменные не работали
+- ✅ **PolyForm Noncommercial License 1.0.0** — смена лицензии с MIT
 
 ### What's new in v0.1.8
 - ✅ **`send_action()`** — fixed API path (`/chats/{chat_id}/actions`) and `SenderAction` values
