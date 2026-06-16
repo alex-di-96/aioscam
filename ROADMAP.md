@@ -9,6 +9,18 @@
 - Смена лицензии MIT → PolyForm Noncommercial License 1.0.0
 - Удалены внутренние dev-логи из `docs/` (FIXES_*.md, MEDIA_UPLOAD, MAX_BUTTON_FORMATTING)
 
+### Bug fix: OpenAppButton — правильные поля API (2026-06-16)
+
+`OpenAppButton` имел поле `app_id: str` которого нет в Max API. Исправлено по официальной документации:
+- `web_app: Optional[str]` — username бота, чьё мини-приложение открыть
+- `contact_id: Optional[int]` — user_id того же бота
+- `payload: Optional[str]` — данные, передаваемые в мини-приложение как `start_param` (макс 512 символов)
+
+`Button.to_dict()` обновлён для сериализации новых полей.
+`KeyboardBuilder.open_app()` — новая сигнатура `(text, web_app=None, contact_id=None, payload=None)`.
+`InlineKeyboard.serialize_button()` уже корректно использовал `web_app`/`contact_id` через `getattr` — изменений не требовалось.
+> Files: `aioscam/types/keyboard.py`, `aioscam/utils/keyboard.py`
+
 ## v0.1.8 — (2026-06-15)
 
 ### StateGuard regex/like/and-or callbacks (2026-06-15)
@@ -267,10 +279,20 @@ Fix: added `quote(payload, safe='')` to the group deep link URL.
   - GigaChat (Sber)
   - Архитектура: отдельный модуль (`aioscam.ai` или extra `aioscam[ai]`), не тащить SDK провайдеров
     в core-зависимости
-- [ ] **Mini App / UI-интеграция** (на обсуждение) — Max API имеет отдельную ветку под мини-приложения
-  (WebView-подобный UI внутри бота). Идея — переработать этот механизм и дать готовое подключение
-  к Kivy или Flutter (через WebView/мост), чтобы пользователи фреймворка могли строить богатый UI
-  без отдельного фронтенд-стека. Требует отдельного исследования API перед реализацией.
+- [ ] **`aioscam.webapp` — серверный модуль для мини-приложений Max**
+  Max WebApps — обычные веб-приложения (HTML/CSS/JS) на HTTPS-хостинге разработчика, открываемые
+  в WebView клиента через `OpenAppButton`. Бот-сторона нужна только для:
+  - Валидации `initData` (HMAC-SHA256 по `botToken`) — стандарт, аналогичный Telegram WebApp
+  - Pydantic-модели `WebAppInitData` (query_id, user, chat, start_param, auth_date, hash)
+  - Хелпера для webhook/REST endpoint (FastAPI/aiohttp handler)
+
+  **Не входит в scope фреймворка:** выбор UI-стека (Flutter Web, React, Svelte, ванильный JS —
+  на усмотрение разработчика), хостинг, Bridge JS SDK.
+
+  Приоритетный UI для примера: **Flutter Web** (компилируется в static HTML/JS, богатый нативный UI)
+  или **Svelte** (< 5 КБ runtime, самодостаточный бандл без CDN).
+  > Зависимость: нет новых (только stdlib `hmac`, `hashlib`)
+  > Docs: https://dev.max.ru/docs/webapps/introduction
 
 ### Technical Debt — минимум зависимостей
 **Принцип:** тащить как можно меньше зависимостей — каждая лишняя зависимость = риск для пользователей

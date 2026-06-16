@@ -35,8 +35,13 @@ class Button(MaxObject):
             result["chat_id"] = self.chat_id
         if hasattr(self, 'query'):
             result["query"] = self.query
-        if hasattr(self, 'app_id'):
-            result["app_id"] = self.app_id
+        if hasattr(self, 'web_app') and self.web_app is not None:
+            result["web_app"] = self.web_app
+        if hasattr(self, 'contact_id') and self.contact_id is not None:
+            result["contact_id"] = self.contact_id
+        if hasattr(self, 'payload') and getattr(self, 'type', None) and \
+                self.type == ButtonType.OPEN_APP and self.payload is not None:
+            result["payload"] = self.payload
         
         return result
 
@@ -105,14 +110,18 @@ class ClipboardButton(Button):
 
 class OpenAppButton(Button):
     """
-    Open app button
-    
+    Open app button — opens the bot's mini-app in Max WebView.
+
     Attributes:
-        app_id: App ID
+        web_app: Bot username whose mini-app to open
+        contact_id: Bot user_id whose mini-app to open
+        payload: Optional data passed to the mini-app as start_param (max 512 chars)
     """
-    
+
     type: ButtonType = ButtonType.OPEN_APP
-    app_id: str
+    web_app: Optional[str] = None
+    contact_id: Optional[int] = None
+    payload: Optional[str] = None
 
 
 class RequestContactButton(Button):

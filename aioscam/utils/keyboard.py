@@ -2,7 +2,7 @@
 Keyboard builder utility
 """
 
-from typing import List
+from typing import List, Optional
 from aioscam.types.keyboard import (
     Keyboard,
     InlineKeyboard,
@@ -108,18 +108,23 @@ class KeyboardBuilder:
         self._current_row.append(btn)
         return self
     
-    def open_app(self, text: str, app_id: str) -> "KeyboardBuilder":
+    def open_app(
+        self,
+        text: str,
+        web_app: Optional[str] = None,
+        contact_id: Optional[int] = None,
+        payload: Optional[str] = None,
+    ) -> "KeyboardBuilder":
         """
-        Add open app button
-        
+        Add open app button — opens the bot's mini-app in Max WebView.
+
         Args:
             text: Button text
-            app_id: App ID
-        
-        Returns:
-            Self for chaining
+            web_app: Bot username whose mini-app to open
+            contact_id: Bot user_id whose mini-app to open
+            payload: Optional data passed to the mini-app as start_param
         """
-        btn = OpenAppButton(text=text, app_id=app_id)
+        btn = OpenAppButton(text=text, web_app=web_app, contact_id=contact_id, payload=payload)
         self._current_row.append(btn)
         return self
     
