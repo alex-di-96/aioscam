@@ -73,7 +73,7 @@ class Config:
             )
         
         # Optional
-        self.api_url = api_url or os.getenv("Aioscam_API_URL", "https://platform-api.max.ru")
+        self.api_url = api_url or os.getenv("AIOSCAM_API_URL", "https://platform-api.max.ru")
     
     @property
     def env_mode(self) -> EnvMode:
@@ -92,12 +92,12 @@ class Config:
     
     def _get_env_mode(self, env_mode: Optional[str] = None) -> EnvMode:
         """Determine environment mode"""
-        mode = env_mode or os.getenv("Aioscam_ENV", "prod").lower()
-        
+        mode = env_mode or os.getenv("AIOSCAM_ENV", "prod").lower()
+
         try:
             return EnvMode(mode)
         except ValueError:
-            logging.warning(f"Invalid Aioscam_ENV={mode!r}, defaulting to 'prod'")
+            logging.warning(f"Invalid AIOSCAM_ENV={mode!r}, defaulting to 'prod'")
             return EnvMode.PROD
     
     def setup_logging(self, logger_name: str = "aioscam") -> logging.Logger:
