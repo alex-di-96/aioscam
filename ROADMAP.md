@@ -208,6 +208,15 @@ Fix: added `quote(payload, safe='')` to the group deep link URL.
 ## Planned
 
 ### v0.2.0
+- [ ] **StateGuard — magic_filter для `state_guard_commands`** — тот же паттерн что реализован для
+  `state_guard_callbacks` в v0.1.8, но для команд. Сейчас `state_guard_commands` — `set` exact-match
+  строк (`{'/start', '/cancel'}`). Нужно: поддержать `F.startswith('/nav_')`, `F.regexp(r'^/cmd_\d+$')`
+  и комбинации `& | ~`, чтобы перехватывать динамические команды вида `/othercommand_15`.
+
+  Реализация: добавить `_command_guard_allowed(command, allowed)` по аналогии с
+  `_callback_guard_allowed()`, заменить `command not in self._guard_allowed_commands` на вызов метода,
+  принимать `Iterable` вместо `set` (MagicFilter нехэшируем). Backward-compatible.
+
 - [ ] `forward_message()` метод
 - [ ] `reply_to` параметр в `send_message()`
 - [ ] Poll types (`poll`, `quiz` в API)
