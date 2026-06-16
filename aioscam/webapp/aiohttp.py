@@ -14,7 +14,8 @@ Usage — per-handler::
 
 Usage — middleware (validates every request to the app)::
 
-    app = web.Application(middlewares=[WebAppMiddleware(bot_token=BOT_TOKEN)])
+    mw = WebAppMiddleware(bot_token=BOT_TOKEN)
+    app = web.Application(middlewares=[mw])
 
     @routes.get("/profile")
     async def profile(request: web.Request) -> web.Response:
@@ -25,16 +26,89 @@ InitData lookup order (first match wins):
     1. ``Authorization: MaxWebApp <initData>`` header
     2. ``X-Webapp-Init-Data: <initData>`` header
     3. JSON body field ``initData`` or ``init_data``
+
+CORS:
+    Add :func:`cors_middleware` when the mini-app frontend is hosted
+    on a different domain from the bot API server::
+
+        app = web.Application(middlewares=[
+            cors_middleware(allow_origins=["https://my-app.vercel.app"]),
+            WebAppMiddleware(bot_token=BOT_TOKEN),
+        ])
 """
 
 import logging
-from typing import Optional
+from typing import Iterable, Optional
 
 from aiohttp import web
 
 from aioscam.webapp.init_data import WebAppDataError, WebAppInitData, validate_init_data
 
 logger = logging.getLogger(__name__)
+
+_CORS_HEADERS = (
+    "Content-Type",
+    "Authorization",
+    "X-Webapp-Init-Data",
+)
+
+
+def cors_middleware(
+    allow_origins: Iterable[str] = ("*",),
+    allow_methods: str = "GET, POST, OPTIONS",
+    max_age: int = 600,
+):
+    """
+    CORS middleware for aiohttp WebApp servers.
+
+    Required when the mini-app frontend is served from a different
+    domain than the bot API (e.g., frontend on Vercel, API on your VPS).
+
+    Args:
+        allow_origins: Allowed origins. Defaults to ``["*"]`` (open).
+                       In production, restrict to your mini-app domain.
+        allow_methods: Comma-separated allowed HTTP methods.
+        max_age: Preflight cache duration in seconds.
+
+    Usage::
+
+        cors = cors_middleware(allow_origins=["https://my-app.vercel.app"])
+        app = web.Application(middlewares=[cors, WebAppMiddleware(BOT_TOKEN)])
+    """
+    origins = list(allow_origins)
+
+    @web.middleware
+    async def _middleware(request: web.Request, handler):
+        origin = request.headers.get("Origin", "")
+
+        if origins == ["*"]:
+            allow_origin = "*"
+        elif origin in origins:
+            allow_origin = origin
+        else:
+            allow_origin = ""
+
+        # Handle preflight
+        if request.method == "OPTIONS":
+            return web.Response(
+                status=204,
+                headers={
+                    "Access-Control-Allow-Origin": allow_origin,
+                    "Access-Control-Allow-Methods": allow_methods,
+                    "Access-Control-Allow-Headers": ", ".join(_CORS_HEADERS),
+                    "Access-Control-Max-Age": str(max_age),
+                },
+            )
+
+        response = await handler(request)
+
+        if allow_origin:
+            response.headers["Access-Control-Allow-Origin"] = allow_origin
+            response.headers["Access-Control-Allow-Headers"] = ", ".join(_CORS_HEADERS)
+
+        return response
+
+    return _middleware
 
 
 async def get_init_data(
@@ -84,39 +158,14 @@ def _extract_raw(request: web.Request) -> Optional[str]:
     return None
 
 
-@web.middleware
-async def webapp_auth_middleware(request: web.Request, handler):
-    """
-    Aiohttp middleware that validates initData on every request.
-
-    Attaches :class:`WebAppInitData` to ``request["webapp_init_data"]``.
-    Returns HTTP 401 if initData is missing or invalid.
-
-    Attach ``bot_token`` via ``app["bot_token"]`` before adding the middleware::
-
-        app["bot_token"] = os.environ["MAX_BOT_TOKEN"]
-        app.middlewares.append(webapp_auth_middleware)
-    """
-    bot_token: Optional[str] = request.app.get("bot_token")
-    if not bot_token:
-        logger.error("webapp_auth_middleware: app['bot_token'] is not set")
-        return web.json_response({"ok": False, "error": "Server misconfiguration"}, status=500)
-
-    try:
-        init_data = await get_init_data(request, bot_token)
-    except WebAppDataError as exc:
-        return web.json_response({"ok": False, "error": str(exc)}, status=401)
-
-    request["webapp_init_data"] = init_data
-    return await handler(request)
-
-
 class WebAppMiddleware:
     """
     Configurable aiohttp middleware for Max WebApp auth.
 
-    Unlike the bare :func:`webapp_auth_middleware`, this class accepts
-    ``bot_token`` directly so ``app["bot_token"]`` is not required::
+    Validates initData on every request and attaches :class:`WebAppInitData`
+    to ``request["webapp_init_data"]``. Returns HTTP 401 on failure.
+
+    Usage::
 
         mw = WebAppMiddleware(bot_token=BOT_TOKEN, max_age=3600)
         app = web.Application(middlewares=[mw])
@@ -128,6 +177,10 @@ class WebAppMiddleware:
 
     @web.middleware
     async def __call__(self, request: web.Request, handler):
+        # Skip auth for static files and OPTIONS preflight
+        if request.method == "OPTIONS" or request.path.startswith("/static"):
+            return await handler(request)
+
         try:
             init_data = await get_init_data(request, self._bot_token, self._max_age)
         except WebAppDataError as exc:
@@ -135,3 +188,28 @@ class WebAppMiddleware:
 
         request["webapp_init_data"] = init_data
         return await handler(request)
+
+
+@web.middleware
+async def webapp_auth_middleware(request: web.Request, handler):
+    """
+    Bare aiohttp middleware that validates initData on every request.
+
+    Reads bot token from ``app["bot_token"]``. Prefer :class:`WebAppMiddleware`
+    for new code (accepts token directly in constructor).
+    """
+    bot_token: Optional[str] = request.app.get("bot_token")
+    if not bot_token:
+        logger.error("webapp_auth_middleware: app['bot_token'] is not set")
+        return web.json_response({"ok": False, "error": "Server misconfiguration"}, status=500)
+
+    if request.method == "OPTIONS" or request.path.startswith("/static"):
+        return await handler(request)
+
+    try:
+        init_data = await get_init_data(request, bot_token)
+    except WebAppDataError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=401)
+
+    request["webapp_init_data"] = init_data
+    return await handler(request)

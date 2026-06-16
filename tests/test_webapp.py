@@ -12,9 +12,11 @@ import pytest
 
 from aioscam.webapp import (
     WebAppChat,
+    WebAppContact,
     WebAppDataError,
     WebAppInitData,
     WebAppUser,
+    validate_contact,
     validate_init_data,
 )
 
@@ -203,3 +205,98 @@ class TestValidateInitDataErrors:
         raw = f"hash={h}"
         with pytest.raises(WebAppDataError, match="auth_date"):
             validate_init_data(raw, BOT_TOKEN)
+
+
+# ---------------------------------------------------------------------------
+# validate_contact helpers
+# ---------------------------------------------------------------------------
+
+def _make_contact_hash(phone: str, auth_date: str, user_id: int, bot_token: str = BOT_TOKEN) -> str:
+    """Compute valid contact hash (same algorithm as Bridge SDK)."""
+    phone_stripped = phone.lstrip("+")
+    params = {
+        "authDate": str(auth_date),
+        "phone": phone_stripped,
+        "userId": str(user_id),
+    }
+    check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
+    return hmac.new(bot_token.encode(), check_string.encode(), hashlib.sha256).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# validate_contact — happy path
+# ---------------------------------------------------------------------------
+
+class TestValidateContact:
+    def test_valid_phone_with_plus(self):
+        phone = "+79001234567"
+        auth_date = "1718500000"
+        user_id = 42
+        h = _make_contact_hash(phone, auth_date, user_id)
+        contact = validate_contact(phone, auth_date, h, user_id, BOT_TOKEN)
+        assert isinstance(contact, WebAppContact)
+        assert contact.phone == phone  # original phone preserved
+
+    def test_valid_phone_without_plus(self):
+        phone = "79001234567"
+        auth_date = "1718500001"
+        user_id = 99
+        h = _make_contact_hash(phone, auth_date, user_id)
+        contact = validate_contact(phone, auth_date, h, user_id, BOT_TOKEN)
+        assert contact.phone == phone
+
+    def test_returns_model(self):
+        phone = "+70000000001"
+        auth_date = "1718500002"
+        user_id = 1
+        h = _make_contact_hash(phone, auth_date, user_id)
+        contact = validate_contact(phone, auth_date, h, user_id, BOT_TOKEN)
+        assert contact.auth_date == auth_date
+        assert contact.hash == h
+
+    def test_plus_prefix_stripped_in_hash_but_not_in_result(self):
+        # +7 and 7 with the same digits should produce the same hash
+        phone_with = "+7111"
+        phone_without = "7111"
+        auth_date = "1"
+        user_id = 1
+        h_with = _make_contact_hash(phone_with, auth_date, user_id)
+        h_without = _make_contact_hash(phone_without, auth_date, user_id)
+        assert h_with == h_without  # same hash regardless of +
+
+
+# ---------------------------------------------------------------------------
+# validate_contact — error cases
+# ---------------------------------------------------------------------------
+
+class TestValidateContactErrors:
+    def test_wrong_hash(self):
+        phone = "+79001234567"
+        auth_date = "1718500000"
+        user_id = 42
+        with pytest.raises(WebAppDataError, match="invalid"):
+            validate_contact(phone, auth_date, "00" * 32, user_id, BOT_TOKEN)
+
+    def test_wrong_user_id(self):
+        phone = "+79001234567"
+        auth_date = "1718500000"
+        user_id = 42
+        h = _make_contact_hash(phone, auth_date, user_id)
+        with pytest.raises(WebAppDataError, match="invalid"):
+            validate_contact(phone, auth_date, h, user_id=999, bot_token=BOT_TOKEN)
+
+    def test_wrong_token(self):
+        phone = "+79001234567"
+        auth_date = "1718500000"
+        user_id = 42
+        h = _make_contact_hash(phone, auth_date, user_id, bot_token="real_token")
+        with pytest.raises(WebAppDataError, match="invalid"):
+            validate_contact(phone, auth_date, h, user_id, bot_token="wrong_token")
+
+    def test_tampered_phone(self):
+        phone = "+79001234567"
+        auth_date = "1718500000"
+        user_id = 42
+        h = _make_contact_hash(phone, auth_date, user_id)
+        with pytest.raises(WebAppDataError, match="invalid"):
+            validate_contact("+79999999999", auth_date, h, user_id, BOT_TOKEN)

@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AioScam WebApp Demo</title>
+<script src="https://st.max.ru/js/max-web-app.js"></script>
+<script src="max-bridge.js"></script>
+<style>
+  :root {
+    --bg: #0f0f0f;
+    --surface: #1a1a1a;
+    --border: #2a2a2a;
+    --accent: #5b8dee;
+    --success: #34c759;
+    --warning: #ff9f0a;
+    --error: #ff453a;
+    --text: #e5e5e7;
+    --muted: #8e8e93;
+    --radius: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 16px;
+    padding-bottom: 40px;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: var(--surface);
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+  }
+
+  .avatar {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 600;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+  .user-info h2 { font-size: 16px; font-weight: 600; }
+  .user-info p { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  .badge {
+    margin-left: auto;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 20px;
+    background: var(--border);
+    color: var(--muted);
+  }
+  .badge.live { background: #1a2e1a; color: var(--success); }
+
+  section {
+    background: var(--surface);
+    border-radius: var(--radius);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+
+  .section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 12px 16px 8px;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    gap: 12px;
+  }
+  .row:first-of-type { border-top: none; }
+
+  .row-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .row-label span { font-size: 15px; }
+  .row-label small { font-size: 12px; color: var(--muted); }
+
+  .platform-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--border);
+    color: var(--muted);
+  }
+
+  button {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+  }
+  button:active { opacity: 0.7; }
+  button.secondary { background: var(--border); color: var(--text); }
+  button.danger { background: #2e1a1a; color: var(--error); }
+  button.success { background: #1a2e1a; color: var(--success); }
+
+  .btn-group { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+  .result-box {
+    margin: 0 16px 12px;
+    padding: 10px 12px;
+    background: var(--bg);
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: monospace;
+    color: var(--muted);
+    word-break: break-all;
+    display: none;
+  }
+  .result-box.show { display: block; }
+  .result-box.ok { color: var(--success); }
+  .result-box.err { color: var(--error); }
+
+  .log {
+    padding: 12px 16px;
+    font-size: 12px;
+    font-family: monospace;
+    color: var(--muted);
+    max-height: 120px;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+  }
+  .log .entry { padding: 2px 0; }
+  .log .entry.ok { color: var(--success); }
+  .log .entry.err { color: var(--error); }
+  .log .entry.warn { color: var(--warning); }
+
+  .info-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 12px;
+    padding: 12px 16px;
+    font-size: 13px;
+  }
+  .info-grid .key { color: var(--muted); }
+  .info-grid .val { font-family: monospace; word-break: break-all; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="avatar" id="avatar">?</div>
+  <div class="user-info">
+    <h2 id="user-name">Загружаем...</h2>
+    <p id="user-meta"></p>
+  </div>
+  <span class="badge" id="platform-badge">web</span>
+</header>
+
+<!-- Auth -->
+<section>
+  <div class="section-title">Авторизация</div>
+  <div class="row">
+    <div class="row-label">
+      <span>Проверить подпись</span>
+      <small>Отправить initData на сервер</small>
+    </div>
+    <button onclick="doAuth()">Проверить</button>
+  </div>
+  <div class="result-box" id="auth-result"></div>
+  <div class="info-grid" id="init-data-info" style="display:none">
+    <span class="key">user_id</span><span class="val" id="info-uid">—</span>
+    <span class="key">start_param</span><span class="val" id="info-sp">—</span>
+    <span class="key">auth_date</span><span class="val" id="info-ad">—</span>
+    <span class="key">platform</span><span class="val" id="info-pl">—</span>
+  </div>
+</section>
+
+<!-- Contact -->
+<section>
+  <div class="section-title">Контакт <span class="platform-badge">iOS · Android · desktop</span></div>
+  <div class="row">
+    <div class="row-label">
+      <span>Запросить телефон</span>
+      <small>requestContact() + серверная валидация</small>
+    </div>
+    <button onclick="doRequestContact()">Запросить</button>
+  </div>
+  <div class="result-box" id="contact-result"></div>
+</section>
+
+<!-- Navigation -->
+<section>
+  <div class="section-title">Навигация</div>
+  <div class="row">
+    <div class="row-label">
+      <span>Кнопка «Назад»</span>
+      <small>BackButton</small>
+    </div>
+    <div class="btn-group">
+      <button onclick="bridge.backButton.show(); log('nav-log','BackButton.show()','ok')">Показать</button>
+      <button class="secondary" onclick="bridge.backButton.hide(); log('nav-log','BackButton.hide()','ok')">Скрыть</button>
+    </div>
+  </div>
+  <div class="row">
+    <div class="row-label">
+      <span>Закрытие с подтверждением</span>
+      <small>enableClosingConfirmation</small>
+    </div>
+    <div class="btn-group">
+      <button onclick="bridge.enableClosingConfirmation(); log('nav-log','Включено','ok')">Вкл</button>
+      <button class="secondary" onclick="bridge.disableClosingConfirmation(); log('nav-log','Выключено','ok')">Выкл</button>
+    </div>
+  </div>
+  <div class="row">
+    <div class="row-label">
+      <span>Открыть ссылку</span>
+      <small>openLink / openMaxLink</small>
+    </div>
+    <div class="btn-group">
+      <button onclick="bridge.openLink('https://max.ru'); log('nav-log','openLink()','ok')">Браузер</button>
+      <button class="secondary" onclick="bridge.openMaxLink('https://max.ru'); log('nav-log','openMaxLink()','ok')">Max</button>
+    </div>
+  </div>
+  <div class="log" id="nav-log"></div>
+</section>
+
+<!-- Haptic -->
+<section>
+  <div class="section-title">Вибрация <span class="platform-badge">iOS · Android</span></div>
+  <div class="row">
+    <span>impactOccurred</span>
+    <div class="btn-group">
+      <button onclick="doHaptic('light')">light</button>
+      <button onclick="doHaptic('medium')">medium</button>
+      <button onclick="doHaptic('heavy')">heavy</button>
+      <button onclick="doHaptic('rigid')">rigid</button>
+      <button onclick="doHaptic('soft')">soft</button>
+    </div>
+  </div>
+  <div class="row">
+    <span>notificationOccurred</span>
+    <div class="btn-group">
+      <button class="success" onclick="doNotify('success')">success</button>
+      <button class="danger" onclick="doNotify('error')">error</button>
+      <button onclick="doNotify('warning')" style="background:#2e2010;color:var(--warning)">warning</button>
+    </div>
+  </div>
+  <div class="row">
+    <span>selectionChanged</span>
+    <button onclick="bridge.haptic.selectionChanged().then(()=>log('haptic-log','selectionChanged','ok'))">Trigger</button>
+  </div>
+  <div class="log" id="haptic-log"></div>
+</section>
+
+<!-- QR -->
+<section>
+  <div class="section-title">QR / Штрих-код</div>
+  <div class="row">
+    <div class="row-label">
+      <span>Сканер кода</span>
+      <small>openCodeReader</small>
+    </div>
+    <div class="btn-group">
+      <button onclick="doQR(true)">Камера + галерея</button>
+      <button class="secondary" onclick="doQR(false)">Только камера</button>
+    </div>
+  </div>
+  <div class="result-box" id="qr-result"></div>
+</section>
+
+<!-- Share -->
+<section>
+  <div class="section-title">Поделиться</div>
+  <div class="row">
+    <div class="row-label">
+      <span>Нативный шеринг</span>
+      <small>shareContent — iOS/Android</small>
+    </div>
+    <button onclick="doShare()">Поделиться</button>
+  </div>
+  <div class="row">
+    <div class="row-label">
+      <span>Шеринг в Max</span>
+      <small>shareMaxContent</small>
+    </div>
+    <button onclick="doShareMax()">В Max</button>
+  </div>
+  <div class="result-box" id="share-result"></div>
+</section>
+
+<!-- Storage -->
+<section>
+  <div class="section-title">Хранилище <span class="platform-badge">iOS · Android</span></div>
+  <div class="row">
+    <div class="row-label">
+      <span>DeviceStorage</span>
+      <small>Незашифрованное, не для секретов</small>
+    </div>
+    <div class="btn-group">
+      <button onclick="doStorageSet('device')">Записать</button>
+      <button class="secondary" onclick="doStorageGet('device')">Прочитать</button>
+      <button class="danger" onclick="bridge.deviceStorage.clear().then(()=>log('storage-log','DeviceStorage cleared','ok'))">Очистить</button>
+    </div>
+  </div>
+  <div class="row">
+    <div class="row-label">
+      <span>SecureStorage</span>
+      <small>Зашифрованное, макс 10 ключей</small>
+    </div>
+    <div class="btn-group">
+      <button onclick="doStorageSet('secure')">Записать</button>
+      <button class="secondary" onclick="doStorageGet('secure')">Прочитать</button>
+      <button class="danger" onclick="bridge.secureStorage.clear().then(()=>log('storage-log','SecureStorage cleared','ok'))">Очистить</button>
+    </div>
+  </div>
+  <div class="log" id="storage-log"></div>
+</section>
+
+<!-- Biometric -->
+<section>
+  <div class="section-title">Биометрия <span class="platform-badge">iOS · Android</span></div>
+  <div class="row">
+    <div class="row-label">
+      <span>Инициализация</span>
+      <small>BiometricManager.init()</small>
+    </div>
+    <button onclick="doBioInit()">Init</button>
+  </div>
+  <div class="row">
+    <div class="row-label">
+      <span>Аутентификация</span>
+      <small>Face ID / Touch ID</small>
+    </div>
+    <button onclick="doBioAuth()">Authenticate</button>
+  </div>
+  <div class="row">
+    <div class="row-label">
+      <span>Настройки</span>
+      <small>Открывает системные настройки</small>
+    </div>
+    <button class="secondary" onclick="bridge.biometric.openSettings().then(r=>log('bio-log','openSettings: '+JSON.stringify(r),'ok'))">Открыть</button>
+  </div>
+  <div class="result-box" id="bio-result"></div>
+  <div class="log" id="bio-log"></div>
+</section>
+
+<!-- NFC -->
+<section>
+  <div class="section-title">NFC <span class="platform-badge">Android</span></div>
+  <div class="row">
+    <div class="row-label">
+      <span>Инициализация</span>
+      <small>NfcManager.init()</small>
+    </div>
+    <button onclick="doNfcInit()">Init</button>
+  </div>
+  <div class="row">
+    <div class="row-label">
+      <span>Эмуляция тега</span>
+      <small>emulateNfcTag</small>
+    </div>
+    <div class="btn-group">
+      <button onclick="doNfcEmulate()">Старт</button>
+      <button class="secondary" onclick="bridge.nfc.emulate().then(r=>log('nfc-log','stopped: '+JSON.stringify(r),'ok'))">Стоп</button>
+    </div>
+  </div>
+  <div class="result-box" id="nfc-result"></div>
+  <div class="log" id="nfc-log"></div>
+</section>
+
+<!-- Screen -->
+<section>
+  <div class="section-title">Экран <span class="platform-badge">iOS · Android</span></div>
+  <div class="row">
+    <div class="row-label">
+      <span>Яркость</span>
+      <small>requestScreenMaxBrightness — 30 сек</small>
+    </div>
+    <div class="btn-group">
+      <button onclick="bridge.requestMaxBrightness().then(r=>log('screen-log','brightness: '+JSON.stringify(r),'ok')).catch(onErr('screen-log'))">Макс</button>
+      <button class="secondary" onclick="bridge.restoreBrightness().then(r=>log('screen-log','restored: '+JSON.stringify(r),'ok')).catch(onErr('screen-log'))">Восстановить</button>
+    </div>
+  </div>
+  <div class="row">
+    <div class="row-label">
+      <span>Снимки экрана</span>
+      <small>ScreenCapture</small>
+    </div>
+    <div class="btn-group">
+      <button onclick="bridge.screenCapture.enable().then(r=>log('screen-log','capture enabled','ok'))">Разрешить</button>
+      <button class="danger" onclick="bridge.screenCapture.disable().then(r=>log('screen-log','capture disabled','warn'))">Запретить</button>
+    </div>
+  </div>
+  <div class="log" id="screen-log"></div>
+</section>
+
+<script>
+const bridge = new MaxBridge();
+const API_BASE = ""; // same-origin; or set to "https://your-bot.example.com"
+
+// ── Init ──────────────────────────────────────────────────────────────────
+
+(function initUI() {
+  const badge = document.getElementById("platform-badge");
+  badge.textContent = bridge.platform || "web";
+  if (bridge.isAvailable) {
+    badge.classList.add("live");
+  }
+
+  const user = bridge.user;
+  const avatarEl = document.getElementById("avatar");
+  const nameEl = document.getElementById("user-name");
+  const metaEl = document.getElementById("user-meta");
+
+  if (user) {
+    nameEl.textContent = [user.first_name, user.last_name].filter(Boolean).join(" ");
+    metaEl.textContent = [user.username ? "@" + user.username : "", user.language_code].filter(Boolean).join(" · ");
+    if (user.photo_url) {
+      avatarEl.innerHTML = `<img src="${user.photo_url}" alt="">`;
+    } else {
+      avatarEl.textContent = (user.first_name || "?")[0].toUpperCase();
+    }
+
+    document.getElementById("info-uid").textContent = user.id;
+    document.getElementById("info-sp").textContent = bridge.startParam || "—";
+    document.getElementById("info-ad").textContent = bridge.initDataUnsafe.auth_date
+      ? new Date(bridge.initDataUnsafe.auth_date * 1000).toLocaleString()
+      : "—";
+    document.getElementById("info-pl").textContent = bridge.platform || "—";
+    document.getElementById("init-data-info").style.display = "grid";
+  } else {
+    nameEl.textContent = "Нет данных пользователя";
+    metaEl.textContent = bridge.isAvailable ? "initDataUnsafe пуст" : "Запущено вне Max";
+    avatarEl.textContent = "?";
+  }
+
+  // Back button → history.back
+  bridge.backButton.onClick(() => history.back());
+})();
+
+// ── Auth ──────────────────────────────────────────────────────────────────
+
+async function doAuth() {
+  const el = document.getElementById("auth-result");
+  try {
+    const data = await bridge.authenticate(API_BASE + "/api/auth");
+    show(el, JSON.stringify(data, null, 2), "ok");
+  } catch (e) {
+    show(el, "Ошибка: " + e.message, "err");
+  }
+}
+
+// ── Contact ───────────────────────────────────────────────────────────────
+
+async function doRequestContact() {
+  const el = document.getElementById("contact-result");
+  try {
+    const contact = await bridge.requestContact();
+    // Send to server for server-side hash validation
+    const resp = await fetch(API_BASE + "/api/contact", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `MaxWebApp ${bridge.initData}`,
+      },
+      body: JSON.stringify(contact),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "Server error");
+    show(el, "Телефон: " + data.phone, "ok");
+  } catch (e) {
+    show(el, "Ошибка: " + e.message, "err");
+  }
+}
+
+// ── Haptic ────────────────────────────────────────────────────────────────
+
+async function doHaptic(style) {
+  try {
+    await bridge.haptic.impact(style);
+    log("haptic-log", `impact(${style})`, "ok");
+  } catch (e) {
+    log("haptic-log", `impact(${style}): ${e.message}`, "err");
+  }
+}
+
+async function doNotify(type) {
+  try {
+    await bridge.haptic.notification(type);
+    log("haptic-log", `notification(${type})`, "ok");
+  } catch (e) {
+    log("haptic-log", `notification(${type}): ${e.message}`, "err");
+  }
+}
+
+// ── QR ────────────────────────────────────────────────────────────────────
+
+async function doQR(fileSelect) {
+  const el = document.getElementById("qr-result");
+  try {
+    const { value } = await bridge.openCodeReader(fileSelect);
+    show(el, "Код: " + value, "ok");
+  } catch (e) {
+    show(el, "Ошибка: " + e.message, "err");
+  }
+}
+
+// ── Share ─────────────────────────────────────────────────────────────────
+
+async function doShare() {
+  const el = document.getElementById("share-result");
+  try {
+    const r = await bridge.shareContent({ text: "Проверяю Max WebApp!", link: "https://max.ru" });
+    show(el, "Статус: " + r.status, r.status === "shared" ? "ok" : "warn");
+  } catch (e) {
+    show(el, "Ошибка: " + e.message, "err");
+  }
+}
+
+async function doShareMax() {
+  const el = document.getElementById("share-result");
+  try {
+    const r = await bridge.shareMaxContent({ text: "Тест aioscam.webapp", link: "https://max.ru" });
+    show(el, "Статус: " + r.status, r.status === "shared" ? "ok" : "warn");
+  } catch (e) {
+    show(el, "Ошибка: " + e.message, "err");
+  }
+}
+
+// ── Storage ───────────────────────────────────────────────────────────────
+
+async function doStorageSet(type) {
+  const storage = type === "device" ? bridge.deviceStorage : bridge.secureStorage;
+  const key = "aioscam_demo";
+  const value = "value_" + Date.now();
+  try {
+    const r = await storage.set(key, value);
+    log("storage-log", `${type}.set(${key}, ${value}) → ${r.status}`, "ok");
+  } catch (e) {
+    log("storage-log", `${type}.set: ${e.message}`, "err");
+  }
+}
+
+async function doStorageGet(type) {
+  const storage = type === "device" ? bridge.deviceStorage : bridge.secureStorage;
+  try {
+    const r = await storage.get("aioscam_demo");
+    log("storage-log", `${type}.get → "${r.value}"`, "ok");
+  } catch (e) {
+    log("storage-log", `${type}.get: ${e.message}`, "err");
+  }
+}
+
+// ── Biometric ─────────────────────────────────────────────────────────────
+
+async function doBioInit() {
+  const el = document.getElementById("bio-result");
+  try {
+    const info = await bridge.biometric.init();
+    show(el, JSON.stringify(info, null, 2), "ok");
+  } catch (e) {
+    show(el, "Ошибка: " + e.message, "err");
+  }
+}
+
+async function doBioAuth() {
+  const el = document.getElementById("bio-result");
+  try {
+    const r = await bridge.biometric.authenticate("Подтвердите личность");
+    show(el, "status: " + r.status + (r.token ? "\ntoken: " + r.token.slice(0, 8) + "..." : ""), "ok");
+  } catch (e) {
+    show(el, "Ошибка: " + e.message, "err");
+  }
+}
+
+// ── NFC ───────────────────────────────────────────────────────────────────
+
+async function doNfcInit() {
+  const el = document.getElementById("nfc-result");
+  try {
+    const info = await bridge.nfc.init();
+    show(el, JSON.stringify(info, null, 2), "ok");
+  } catch (e) {
+    show(el, "Ошибка: " + e.message, "err");
+  }
+}
+
+async function doNfcEmulate() {
+  const el = document.getElementById("nfc-result");
+  try {
+    const r = await bridge.nfc.emulate("aioscam_nfc_demo");
+    show(el, "status: " + r.status, "ok");
+  } catch (e) {
+    show(el, "Ошибка: " + e.message, "err");
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+function show(el, text, cls) {
+  el.textContent = text;
+  el.className = "result-box show " + (cls || "");
+}
+
+function log(containerId, text, cls) {
+  const el = document.getElementById(containerId);
+  const entry = document.createElement("div");
+  entry.className = "entry " + (cls || "");
+  entry.textContent = new Date().toLocaleTimeString() + "  " + text;
+  el.appendChild(entry);
+  el.scrollTop = el.scrollHeight;
+}
+
+function onErr(logId) {
+  return (e) => log(logId, "Ошибка: " + (e?.error?.code || e?.message || e), "err");
+}
+</script>
+</body>
+</html>

@@ -60,6 +60,14 @@ class WebAppInitData(BaseModel):
     ip: Optional[str] = None
 
 
+class WebAppContact(BaseModel):
+    """Validated contact returned by window.WebApp.requestContact()."""
+
+    phone: str
+    auth_date: str
+    hash: str
+
+
 def validate_init_data(
     init_data_raw: str,
     bot_token: str,
@@ -127,3 +135,46 @@ def validate_init_data(
         start_param=params.get("start_param"),
         ip=params.get("ip"),
     )
+
+
+def validate_contact(
+    phone: str,
+    auth_date: str,
+    contact_hash: str,
+    user_id: int,
+    bot_token: str,
+) -> WebAppContact:
+    """
+    Validate the contact returned by ``window.WebApp.requestContact()``.
+
+    Algorithm (per Max Bridge SDK docs):
+        params = {authDate, phone (no leading +), userId}
+        check_string = sorted key=value pairs joined by ``\\n``
+        hash = HMAC_SHA256(key=bot_token, msg=check_string).hexdigest()
+
+    Args:
+        phone: Phone number as returned by requestContact (may have leading +)
+        auth_date: authDate string from requestContact result
+        contact_hash: hash string from requestContact result
+        user_id: User ID from validated initData (``init_data.user.id``)
+        bot_token: Bot token (``MAX_BOT_TOKEN``)
+
+    Returns:
+        :class:`WebAppContact` with the validated phone number
+
+    Raises:
+        WebAppDataError: If the hash does not match
+    """
+    phone_stripped = phone.lstrip("+")
+    params = {
+        "authDate": str(auth_date),
+        "phone": phone_stripped,
+        "userId": str(user_id),
+    }
+    check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
+    expected = hmac.new(bot_token.encode(), check_string.encode(), hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(expected, contact_hash):
+        raise WebAppDataError("Contact hash is invalid")
+
+    return WebAppContact(phone=phone, auth_date=auth_date, hash=contact_hash)
