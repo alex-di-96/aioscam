@@ -1,6 +1,6 @@
 # AioScam — Documentation (EN)
 
-**v0.1.8** | [Русский](../ru/README.md)
+**v0.1.8.1** | [Русский](../ru/README.md)
 
 ## Table of Contents
 
@@ -339,3 +339,10 @@ await dp.handle_webhook(bot=bot, host="0.0.0.0", port=8080,
 |----------|----------|-------------|
 | `MAX_BOT_TOKEN` | ✅ | Bot token from Max |
 | `AIOSCAM_ENV` | ❌ | `debug` / `test` / `prod` (default: `prod`) |
+
+
+---
+
+## License
+
+[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — free for personal, educational, and other noncommercial use. Commercial use requires a separate license — contact the author.

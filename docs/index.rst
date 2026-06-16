@@ -36,7 +36,7 @@ Quick Start
    dp.include_router(router)
 
    async def main():
-       bot = Bot("YOUR_TOKEN")
+       bot = Bot()  # token from MAX_BOT_TOKEN env var
        await dp.start_polling(bot)
 
 Features

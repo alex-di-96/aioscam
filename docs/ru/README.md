@@ -1,6 +1,6 @@
 # AioScam — Документация (RU)
 
-**v0.1.8** | [English](../en/README.md)
+**v0.1.8.1** | [English](../en/README.md)
 
 ## Оглавление
 
@@ -515,3 +515,9 @@ from aioscam.config import get_config
 config = get_config()
 print(config.token, config.env)
 ```
+
+---
+
+## Лицензия
+
+[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — бесплатно для личного, образовательного и некоммерческого использования. Коммерческое использование требует отдельного соглашения — свяжитесь с автором.
