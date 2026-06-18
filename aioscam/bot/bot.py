@@ -150,7 +150,8 @@ class Bot:
         text: str = "",
         user_id: Optional[int] = None,
         reply_to_mid: Optional[str] = None,
-        keyboard: Optional[Dict[str, Any]] = None,
+        keyboard: Optional[Any] = None,
+        inline_keyboard: Optional[Any] = None,
         format: Optional[str] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
         autosplit: bool = False,
@@ -175,6 +176,14 @@ class Bot:
         Returns:
             Sent message data
         """
+        # inline_keyboard= is an alias for keyboard=
+        if inline_keyboard is not None and keyboard is None:
+            keyboard = inline_keyboard
+
+        # Normalize keyboard model to dict (InlineKeyboard/Keyboard have to_dict())
+        if keyboard is not None and hasattr(keyboard, "to_dict"):
+            keyboard = keyboard.to_dict()
+
         # autosplit=True: split long text into 4000-char chunks,
         # keyboard and attachments go to the last chunk only
         if autosplit and text and len(text) > MAX_TEXT_LENGTH:
