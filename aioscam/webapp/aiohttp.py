@@ -25,7 +25,8 @@ Usage — middleware (validates every request to the app)::
 InitData lookup order (first match wins):
     1. ``Authorization: MaxWebApp <initData>`` header
     2. ``X-Webapp-Init-Data: <initData>`` header
-    3. JSON body field ``initData`` or ``init_data``
+    3. ``?initData=<initData>`` query parameter (for EventSource / SSE)
+    4. JSON body field ``initData`` or ``init_data``
 
 CORS:
     Add :func:`cors_middleware` when the mini-app frontend is hosted
@@ -146,7 +147,7 @@ async def get_init_data(
 
 
 def _extract_raw(request: web.Request) -> Optional[str]:
-    """Extract raw initData string from headers only (no body I/O)."""
+    """Extract raw initData string from headers or query (for EventSource)."""
     auth = request.headers.get("Authorization", "")
     if auth.startswith("MaxWebApp "):
         return auth[len("MaxWebApp "):]
@@ -155,39 +156,44 @@ def _extract_raw(request: web.Request) -> Optional[str]:
     if header:
         return header
 
+    # EventSource cannot set headers — allow query param for SSE endpoints
+    query_val = request.rel_url.query.get("initData", "")
+    if query_val:
+        return query_val
+
     return None
 
 
-class WebAppMiddleware:
+def WebAppMiddleware(bot_token: str, max_age: int = 86400):
     """
-    Configurable aiohttp middleware for Max WebApp auth.
+    Configurable aiohttp middleware factory for Max WebApp auth.
 
-    Validates initData on every request and attaches :class:`WebAppInitData`
-    to ``request["webapp_init_data"]``. Returns HTTP 401 on failure.
+    Validates initData on ``/api/*`` requests and attaches
+    :class:`WebAppInitData` to ``request["webapp_init_data"]``.
+    Returns HTTP 401 on failure. Skips OPTIONS and any path that does
+    not start with ``/api``.
 
     Usage::
 
-        mw = WebAppMiddleware(bot_token=BOT_TOKEN, max_age=3600)
-        app = web.Application(middlewares=[mw])
+        app = web.Application(middlewares=[
+            WebAppMiddleware(bot_token=BOT_TOKEN, max_age=3600),
+        ])
     """
 
-    def __init__(self, bot_token: str, max_age: int = 86400):
-        self._bot_token = bot_token
-        self._max_age = max_age
-
     @web.middleware
-    async def __call__(self, request: web.Request, handler):
-        # Skip auth for static files and OPTIONS preflight
-        if request.method == "OPTIONS" or request.path.startswith("/static"):
+    async def _middleware(request: web.Request, handler):
+        if request.method == "OPTIONS" or not request.path.startswith("/api"):
             return await handler(request)
 
         try:
-            init_data = await get_init_data(request, self._bot_token, self._max_age)
+            init_data = await get_init_data(request, bot_token, max_age)
         except WebAppDataError as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=401)
 
         request["webapp_init_data"] = init_data
         return await handler(request)
+
+    return _middleware
 
 
 @web.middleware

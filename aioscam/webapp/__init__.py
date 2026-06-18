@@ -28,21 +28,37 @@ For aiohttp servers::
 """
 
 from aioscam.webapp.init_data import (
+    FeatureUnavailableError,
     WebAppChat,
     WebAppContact,
     WebAppDataError,
+    WebAppExpiredError,
     WebAppInitData,
+    WebAppMissingFieldError,
+    WebAppParseError,
+    WebAppSignatureError,
     WebAppUser,
     validate_contact,
     validate_init_data,
 )
+from aioscam.webapp.events import EventStreamManager
 
 __all__ = [
+    # Models
     "WebAppUser",
     "WebAppChat",
     "WebAppInitData",
     "WebAppContact",
+    # Exceptions — catch WebAppDataError for all, or specific subclasses
     "WebAppDataError",
+    "WebAppSignatureError",
+    "WebAppExpiredError",
+    "WebAppMissingFieldError",
+    "WebAppParseError",
+    "FeatureUnavailableError",
+    # Functions
     "validate_init_data",
     "validate_contact",
+    # SSE
+    "EventStreamManager",
 ]

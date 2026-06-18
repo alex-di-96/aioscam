@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ru">
+<!--
+  AioScam WebApp — Vue 3 demo
+  ───────────────────────────
+  Показывает двустороннюю связь Bot ↔ WebApp через SSE и /api/send.
+  Bridge SDK (haptic, QR, biometric, NFC, storage) — в index.html.
+  Расширенные компоненты (Charts, Table) — в charts.html / table.html.
+-->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AioScam WebApp — Vue</title>
+<script src="https://st.max.ru/js/max-web-app.js"></script>
+<script src="max-bridge.js"></script>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<style>
+  :root {
+    --bg:#0f0f0f; --surface:#1a1a1a; --border:#2a2a2a;
+    --accent:#5b8dee; --success:#34c759; --warning:#ff9f0a;
+    --error:#ff453a; --text:#e5e5e7; --muted:#8e8e93; --r:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:16px 16px 48px}
+
+  /* Header */
+  .hdr{display:flex;align-items:center;gap:12px;padding:16px;background:var(--surface);border-radius:var(--r);margin-bottom:16px}
+  .av{width:48px;height:48px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:600;flex-shrink:0;overflow:hidden}
+  .av img{width:100%;height:100%;object-fit:cover}
+  .ui h2{font-size:16px;font-weight:600}
+  .ui p{font-size:13px;color:var(--muted);margin-top:2px}
+  .badge{margin-left:auto;font-size:11px;padding:4px 8px;border-radius:20px;background:var(--border);color:var(--muted)}
+  .badge.live{background:#1a2e1a;color:var(--success)}
+
+  /* Nav links */
+  .nav-links{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+  .nav-link{font-size:12px;padding:5px 10px;border-radius:6px;background:var(--surface);color:var(--muted);text-decoration:none;border:1px solid var(--border)}
+  .nav-link:hover{color:var(--text);border-color:var(--accent)}
+  .nav-link.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+  /* Section */
+  section{background:var(--surface);border-radius:var(--r);margin-bottom:12px;overflow:hidden}
+  .stitle{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:12px 16px 8px}
+
+  /* Tabs */
+  .tabs{display:flex;border-bottom:1px solid var(--border)}
+  .tab{flex:1;padding:12px 8px;text-align:center;font-size:13px;cursor:pointer;color:var(--muted);border:none;background:none;border-bottom:2px solid transparent;transition:all .15s}
+  .tab.on{color:var(--accent);border-bottom-color:var(--accent)}
+
+  /* Tab content */
+  .tc{padding:16px}
+
+  /* SSE status */
+  .sse-row{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .3s}
+  .dot.ok{background:var(--success);box-shadow:0 0 6px var(--success)}
+  .dot.err{background:var(--error)}
+
+  /* Event log */
+  .elog{background:var(--bg);border-radius:8px;padding:10px 12px;max-height:200px;overflow-y:auto;font-size:12px;font-family:monospace;margin-top:10px}
+  .ee{padding:3px 0;border-bottom:1px solid var(--border)}
+  .ee:last-child{border-bottom:none}
+  .ee-t{color:var(--muted);margin-right:6px}
+  .ee-type{color:var(--accent)}
+  .ee.bot_message .ee-type{color:var(--success)}
+  .ee.chat_message .ee-type{color:var(--warning)}
+  .ee.message_sent .ee-type{color:var(--success)}
+  .ee-body{color:var(--text);margin-left:12px;margin-top:1px}
+
+  /* Field / Form */
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .field input,.field textarea{width:100%;padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;transition:border-color .15s;font-family:inherit}
+  .field input:focus,.field textarea:focus{border-color:var(--accent)}
+  .field textarea{resize:vertical;min-height:68px}
+
+  /* Buttons */
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-size:14px;font-weight:500;cursor:pointer;transition:opacity .15s;white-space:nowrap}
+  .btn:active{opacity:.7}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.sec{background:var(--border);color:var(--text)}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap}
+
+  /* Result */
+  .res{margin-top:10px;padding:10px 12px;border-radius:8px;font-size:12px;font-family:monospace;word-break:break-all;background:var(--bg)}
+  .res.ok{color:var(--success)}
+  .res.err{color:var(--error)}
+
+  /* Profile grid */
+  .pgrid{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:13px}
+  .pk{color:var(--muted)}
+  .pv{font-family:monospace;word-break:break-all}
+
+  /* Contact */
+  .feat-note{font-size:11px;color:var(--muted);margin-top:4px}
+  .feat-badge{font-size:10px;padding:2px 6px;border-radius:4px;background:var(--border);color:var(--muted);margin-left:6px}
+
+  /* Transitions */
+  .fade-enter-active,.fade-leave-active{transition:opacity .2s}
+  .fade-enter-from,.fade-leave-to{opacity:0}
+
+  /* Divider */
+  .div{border:none;border-top:1px solid var(--border);margin:14px 0}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <header class="hdr">
+    <div class="av">
+      <img v-if="user?.photo_url" :src="user.photo_url" alt="">
+      <template v-else>{{ userInitial }}</template>
+    </div>
+    <div class="ui">
+      <h2>{{ userFullName || 'Загрузка...' }}</h2>
+      <p>{{ userMeta }}</p>
+    </div>
+    <span class="badge" :class="{ live: bridge.isAvailable }">{{ bridge.platform || 'web' }}</span>
+  </header>
+
+  <!-- Page nav -->
+  <nav class="nav-links">
+    <span class="nav-link active">Vue Demo</span>
+    <a class="nav-link" href="/">Bridge SDK</a>
+    <a class="nav-link" href="/charts.html">Charts</a>
+    <a class="nav-link" href="/table.html">Table</a>
+  </nav>
+
+  <!-- Tabs: Chat | Profile -->
+  <section>
+    <div class="tabs">
+      <button class="tab" :class="{on: tab==='chat'}"    @click="tab='chat'">Чат ↔ Бот</button>
+      <button class="tab" :class="{on: tab==='profile'}" @click="tab='profile'">Профиль</button>
+    </div>
+
+    <!-- ── TAB: Chat ─────────────────────────────────────────────────────── -->
+    <div v-show="tab==='chat'" class="tc">
+
+      <!-- SSE -->
+      <div class="sse-row">
+        <div class="dot" :class="sseDotClass"></div>
+        <span style="font-size:13px">{{ sseLabel }}</span>
+        <button class="btn sec" style="margin-left:auto;padding:6px 12px;font-size:12px"
+                @click="toggleSSE">{{ sseOn ? 'Отключить' : 'Подключить SSE' }}</button>
+      </div>
+
+      <!-- Send -->
+      <div class="field">
+        <label>Сообщение → бот → чат пользователя</label>
+        <textarea v-model="msg" placeholder="Текст..." :disabled="sending"
+                  @keydown.ctrl.enter="send"></textarea>
+      </div>
+      <div class="btn-row">
+        <button class="btn" @click="send" :disabled="!msg.trim() || sending">
+          {{ sending ? 'Отправка…' : 'Отправить' }}
+        </button>
+      </div>
+      <transition name="fade">
+        <div v-if="sendRes" class="res" :class="sendRes.cls">{{ sendRes.text }}</div>
+      </transition>
+
+      <hr class="div">
+
+      <!-- Event log -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:12px;color:var(--muted)">Входящие события от бота</span>
+        <button v-if="events.length" class="btn sec" style="padding:3px 8px;font-size:11px"
+                @click="events=[]">Очистить</button>
+      </div>
+      <div class="elog" ref="logEl">
+        <div v-if="!events.length" style="color:var(--muted);font-style:italic">
+          {{ sseOn ? 'Ждём событий… Напишите боту /echo текст' : 'Подключите SSE' }}
+        </div>
+        <div v-for="(e,i) in events" :key="i" class="ee" :class="e.type">
+          <div><span class="ee-t">{{ e.time }}</span><span class="ee-type">{{ e.type }}</span></div>
+          <div class="ee-body">{{ e.body }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB: Profile ──────────────────────────────────────────────────── -->
+    <div v-show="tab==='profile'" class="tc">
+
+      <div class="btn-row" style="margin-bottom:14px">
+        <button class="btn"     @click="doAuth">Авторизация (POST /api/auth)</button>
+        <button class="btn sec" @click="doMe">Профиль (GET /api/me)</button>
+      </div>
+
+      <transition name="fade">
+        <div v-if="profileRes" class="res" :class="profileRes.cls">
+          <div v-if="profileRes.data" class="pgrid">
+            <span class="pk">user_id</span>  <span class="pv">{{ profileRes.data.user?.id }}</span>
+            <span class="pk">username</span>  <span class="pv">@{{ profileRes.data.user?.username || '—' }}</span>
+            <span class="pk">name</span>      <span class="pv">{{ profileRes.data.user?.first_name }} {{ profileRes.data.user?.last_name || '' }}</span>
+            <span class="pk">lang</span>      <span class="pv">{{ profileRes.data.user?.language_code || '—' }}</span>
+            <span class="pk">start_param</span><span class="pv">{{ profileRes.data.start_param || '—' }}</span>
+            <span class="pk">auth_date</span> <span class="pv">{{ fmtDate(profileRes.data.auth_date) }}</span>
+            <span class="pk">sse_active</span><span class="pv">{{ profileRes.data.sse_active ? '✓' : '✗' }}</span>
+            <span class="pk">platform</span>  <span class="pv">{{ profileRes.data.platform || bridge.platform || '—' }}</span>
+          </div>
+          <template v-else>{{ profileRes.text }}</template>
+        </div>
+      </transition>
+
+      <hr class="div">
+
+      <!-- Contact — client-side feature, platform-dependent -->
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+        Контакт
+        <span class="feat-badge">iOS · Android</span>
+      </div>
+      <button class="btn" @click="doContact" :disabled="!bridge.isAvailable">
+        Запросить телефон
+      </button>
+      <div v-if="!bridge.isAvailable" class="feat-note">
+        requestContact() доступен только в приложении Max (iOS / Android)
+      </div>
+      <transition name="fade">
+        <div v-if="contactRes" class="res" :class="contactRes.cls">{{ contactRes.text }}</div>
+      </transition>
+    </div>
+
+  </section>
+
+</div>
+
+<script>
+const { createApp, ref, computed, nextTick, onMounted } = Vue;
+
+createApp({
+  setup() {
+    const bridge = new MaxBridge();
+    const API  = "";  // same-origin
+
+    // ── User info ─────────────────────────────────────────────────────────
+    const user = computed(() => bridge.user);
+    const userInitial  = computed(() => (bridge.user?.first_name || "?")[0].toUpperCase());
+    const userFullName = computed(() =>
+      [bridge.user?.first_name, bridge.user?.last_name].filter(Boolean).join(" "));
+    const userMeta = computed(() => {
+      const p = [];
+      if (bridge.user?.username) p.push("@" + bridge.user.username);
+      if (bridge.user?.language_code) p.push(bridge.user.language_code);
+      if (!bridge.isAvailable) p.push("вне Max");
+      return p.join(" · ");
+    });
+
+    // ── Tabs ──────────────────────────────────────────────────────────────
+    const tab = ref("chat");
+
+    // ── SSE ───────────────────────────────────────────────────────────────
+    let _es = null;
+    const sseOn    = ref(false);
+    const sseLabel = ref("Не подключено");
+    const events   = ref([]);
+    const logEl    = ref(null);
+
+    const sseDotClass = computed(() => sseOn.value ? "ok" : "");
+
+    function toggleSSE() {
+      if (_es) { _es.close(); _es = null; sseOn.value = false; sseLabel.value = "Отключено"; }
+      else connectSSE();
+    }
+
+    function connectSSE() {
+      if (!bridge.initData) { sseLabel.value = "initData недоступен"; return; }
+      const url = API + "/api/events?initData=" + encodeURIComponent(bridge.initData);
+      _es = new EventSource(url);
+      _es.addEventListener("connected", (e) => {
+        sseOn.value = true; sseLabel.value = "Подключено";
+        addEv("connected", JSON.parse(e.data));
+      });
+      ["bot_message","chat_message","contact_shared","message_sent"].forEach(t => {
+        _es.addEventListener(t, (e) => addEv(t, JSON.parse(e.data)));
+      });
+      _es.onerror = () => { sseOn.value = false; sseLabel.value = "Ошибка, переподключение…"; };
+    }
+
+    async function addEv(type, data) {
+      events.value.push({ type, time: new Date().toLocaleTimeString(), body: JSON.stringify(data) });
+      await nextTick();
+      if (logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight;
+      if (type === "bot_message") bridge.haptic.notification("success").catch(() => {});
+    }
+
+    // ── Send (WebApp → Bot) ───────────────────────────────────────────────
+    const msg     = ref("");
+    const sending = ref(false);
+    const sendRes = ref(null);
+
+    async function send() {
+      const text = msg.value.trim();
+      if (!text || sending.value) return;
+      sending.value = true; sendRes.value = null;
+      try {
+        const r = await fetch(API + "/api/send", {
+          method: "POST",
+          headers: { "Content-Type":"application/json", "Authorization":`MaxWebApp ${bridge.initData}` },
+          body: JSON.stringify({ text }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+        sendRes.value = { text: "✓ Доставлено", cls: "ok" };
+        msg.value = "";
+        bridge.haptic.notification("success").catch(() => {});
+      } catch(e) {
+        sendRes.value = { text: "Ошибка: " + e.message, cls: "err" };
+      } finally { sending.value = false; }
+    }
+
+    // ── Profile ───────────────────────────────────────────────────────────
+    const profileRes = ref(null);
+
+    async function doAuth() {
+      profileRes.value = null;
+      try {
+        const r = await fetch(API + "/api/auth", {
+          method: "POST",
+          headers: { "Authorization": `MaxWebApp ${bridge.initData}` },
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+        profileRes.value = { data: d, cls: "ok" };
+      } catch(e) { profileRes.value = { text: "Ошибка: " + e.message, cls: "err" }; }
+    }
+
+    async function doMe() {
+      profileRes.value = null;
+      try {
+        const r = await fetch(API + "/api/me", {
+          headers: { "Authorization": `MaxWebApp ${bridge.initData}` },
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+        profileRes.value = { data: d, cls: "ok" };
+      } catch(e) { profileRes.value = { text: "Ошибка: " + e.message, cls: "err" }; }
+    }
+
+    function fmtDate(ts) {
+      return ts ? new Date(ts * 1000).toLocaleString() : "—";
+    }
+
+    // ── Contact ───────────────────────────────────────────────────────────
+    const contactRes = ref(null);
+
+    async function doContact() {
+      contactRes.value = null;
+      try {
+        const contact = await bridge.requestContact();
+        const r = await fetch(API + "/api/contact", {
+          method: "POST",
+          headers: { "Content-Type":"application/json", "Authorization":`MaxWebApp ${bridge.initData}` },
+          body: JSON.stringify(contact),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+        contactRes.value = { text: "Телефон: " + d.phone, cls: "ok" };
+      } catch(e) { contactRes.value = { text: "Ошибка: " + e.message, cls: "err" }; }
+    }
+
+    // ── Init ──────────────────────────────────────────────────────────────
+    onMounted(() => {
+      bridge.backButton.onClick(() => history.back());
+      if (bridge.isAvailable && bridge.initData) connectSSE();
+    });
+
+    return {
+      bridge, user, userInitial, userFullName, userMeta,
+      tab,
+      sseOn, sseLabel, sseDotClass, events, logEl, toggleSSE,
+      msg, sending, sendRes, send,
+      profileRes, doAuth, doMe, fmtDate,
+      contactRes, doContact,
+    };
+  }
+}).mount("#app");
+</script>
+</body>
+</html>

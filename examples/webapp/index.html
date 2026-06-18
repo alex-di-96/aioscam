@@ -165,6 +165,63 @@
   }
   .info-grid .key { color: var(--muted); }
   .info-grid .val { font-family: monospace; word-break: break-all; }
+
+  /* SSE + Send */
+  .sse-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    font-size: 13px;
+  }
+  .sse-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .sse-dot.connected { background: var(--success); box-shadow: 0 0 6px var(--success); }
+  .sse-dot.error { background: var(--error); }
+
+  .event-log {
+    padding: 8px 16px 12px;
+    font-size: 12px;
+    font-family: monospace;
+    color: var(--muted);
+    max-height: 180px;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+  }
+  .event-log .ev { padding: 3px 0; border-bottom: 1px solid var(--border); }
+  .event-log .ev:last-child { border-bottom: none; }
+  .event-log .ev .ev-type { color: var(--accent); }
+  .event-log .ev.bot_message .ev-type { color: var(--success); }
+  .event-log .ev.chat_message .ev-type { color: var(--warning); }
+  .event-log .ev.contact_shared .ev-type { color: #a070ff; }
+  .event-log .ev.message_sent .ev-type { color: var(--success); }
+  .event-log .ev-time { color: var(--muted); margin-right: 6px; }
+  .event-log .ev-body { color: var(--text); margin-top: 2px; margin-left: 12px; }
+  .event-log .empty { color: var(--muted); font-style: italic; }
+
+  .send-form {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+  }
+  .send-form input {
+    flex: 1;
+    padding: 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+  }
+  .send-form input:focus { border-color: var(--accent); }
+  .send-form input::placeholder { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -195,6 +252,51 @@
     <span class="key">auth_date</span><span class="val" id="info-ad">—</span>
     <span class="key">platform</span><span class="val" id="info-pl">—</span>
   </div>
+</section>
+
+<!-- Bot ↔ WebApp: SSE stream -->
+<section>
+  <div class="section-title">Бот → WebApp <span class="platform-badge">SSE real-time</span></div>
+  <div class="sse-status">
+    <div class="sse-dot" id="sse-dot"></div>
+    <span id="sse-label">Не подключено</span>
+    <div class="btn-group" style="margin-left:auto">
+      <button id="sse-btn" onclick="toggleSSE()">Подключить</button>
+    </div>
+  </div>
+  <div class="event-log" id="event-log">
+    <div class="empty">События появятся после подключения SSE...</div>
+  </div>
+</section>
+
+<!-- Bot ↔ WebApp: WebApp → Bot send -->
+<section>
+  <div class="section-title">WebApp → Бот</div>
+  <div class="row">
+    <div class="row-label">
+      <span>Отправить в чат</span>
+      <small>POST /api/send — бот доставит сообщение</small>
+    </div>
+  </div>
+  <div class="send-form">
+    <input type="text" id="send-input" placeholder="Введите сообщение..." maxlength="1000"
+           onkeydown="if(event.key==='Enter') doSend()">
+    <button onclick="doSend()">Отправить</button>
+  </div>
+  <div class="result-box" id="send-result"></div>
+</section>
+
+<!-- User profile from /api/me -->
+<section>
+  <div class="section-title">Профиль (сервер)</div>
+  <div class="row">
+    <div class="row-label">
+      <span>Загрузить профиль</span>
+      <small>GET /api/me — данные из initData на сервере</small>
+    </div>
+    <button onclick="doLoadMe()">Загрузить</button>
+  </div>
+  <div class="result-box" id="me-result"></div>
 </section>
 
 <!-- Contact -->
@@ -459,6 +561,132 @@ const API_BASE = ""; // same-origin; or set to "https://your-bot.example.com"
   // Back button → history.back
   bridge.backButton.onClick(() => history.back());
 })();
+
+// ── SSE ───────────────────────────────────────────────────────────────────
+
+let _es = null;
+
+function toggleSSE() {
+  if (_es) {
+    _es.close();
+    _es = null;
+    setSseState("disconnected");
+    document.getElementById("sse-btn").textContent = "Подключить";
+  } else {
+    connectSSE();
+    document.getElementById("sse-btn").textContent = "Отключить";
+  }
+}
+
+function connectSSE() {
+  if (_es) return;
+  const initData = bridge.initData;
+  if (!initData) {
+    setSseState("error", "initData недоступен");
+    return;
+  }
+  // EventSource не поддерживает заголовки → передаём initData через query
+  const url = API_BASE + "/api/events?initData=" + encodeURIComponent(initData);
+  _es = new EventSource(url);
+
+  _es.addEventListener("connected", (e) => {
+    setSseState("connected", "Подключено");
+    addEvent("connected", JSON.parse(e.data));
+  });
+
+  const sseEvents = ["bot_message", "chat_message", "contact_shared", "message_sent"];
+  sseEvents.forEach(type => {
+    _es.addEventListener(type, (e) => {
+      addEvent(type, JSON.parse(e.data));
+    });
+  });
+
+  _es.onerror = () => {
+    setSseState("error", "Ошибка соединения, переподключение...");
+  };
+}
+
+function setSseState(state, text) {
+  const dot = document.getElementById("sse-dot");
+  const label = document.getElementById("sse-label");
+  dot.className = "sse-dot " + (state === "connected" ? "connected" : state === "error" ? "error" : "");
+  if (text) label.textContent = text;
+}
+
+function addEvent(type, data) {
+  const log = document.getElementById("event-log");
+  const empty = log.querySelector(".empty");
+  if (empty) empty.remove();
+
+  const ev = document.createElement("div");
+  ev.className = "ev " + type;
+
+  const time = new Date().toLocaleTimeString();
+  const body = typeof data === "object" ? JSON.stringify(data) : String(data);
+
+  ev.innerHTML =
+    `<div><span class="ev-time">${time}</span><span class="ev-type">${type}</span></div>` +
+    `<div class="ev-body">${escapeHtml(body)}</div>`;
+
+  log.appendChild(ev);
+  log.scrollTop = log.scrollHeight;
+
+  // Показать уведомление в WebApp если бот прислал сообщение
+  if (type === "bot_message" && data.text) {
+    bridge.haptic.notification("success").catch(() => {});
+  }
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ── Send (WebApp → Bot) ───────────────────────────────────────────────────
+
+async function doSend() {
+  const input = document.getElementById("send-input");
+  const el = document.getElementById("send-result");
+  const text = input.value.trim();
+  if (!text) return;
+
+  input.disabled = true;
+  try {
+    const resp = await fetch(API_BASE + "/api/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `MaxWebApp ${bridge.initData}`,
+      },
+      body: JSON.stringify({ text }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "Server error " + resp.status);
+    show(el, "✓ Отправлено в чат", "ok");
+    input.value = "";
+    bridge.haptic.notification("success").catch(() => {});
+  } catch (e) {
+    show(el, "Ошибка: " + e.message, "err");
+  } finally {
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+// ── Profile (/api/me) ─────────────────────────────────────────────────────
+
+async function doLoadMe() {
+  const el = document.getElementById("me-result");
+  try {
+    const resp = await fetch(API_BASE + "/api/me", {
+      headers: { "Authorization": `MaxWebApp ${bridge.initData}` },
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "Server error " + resp.status);
+    show(el, JSON.stringify(data, null, 2), "ok");
+  } catch (e) {
+    show(el, "Ошибка: " + e.message, "err");
+  }
+}
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 

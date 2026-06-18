@@ -6,6 +6,21 @@ from typing import Any, Dict, Optional
 from aioscam.enums import HttpMethod
 
 
+def _serialize(value: Any) -> Any:
+    """Recursively convert Pydantic models and enums to JSON-safe types."""
+    if hasattr(value, "model_dump"):
+        return _serialize(value.model_dump())
+    if hasattr(value, "dict"):
+        return _serialize(value.dict())
+    if hasattr(value, "value"):
+        return value.value
+    if isinstance(value, dict):
+        return {k: _serialize(v) for k, v in value.items() if v is not None}
+    if isinstance(value, (list, tuple)):
+        return [_serialize(item) for item in value]
+    return value
+
+
 class RequestBuilder:
     """
     Builder for HTTP requests to Max API
@@ -76,7 +91,7 @@ class RequestBuilder:
         }
         
         if self.body:
-            request["json"] = self.body
+            request["json"] = _serialize(self.body)
         
         if self.params:
             request["params"] = self.params
