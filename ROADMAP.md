@@ -1,6 +1,70 @@
 # AioScam Roadmap
 
-## v0.1.8.1 — Current (2026-06-16)
+## v0.2.0 — Current (2026-06-19)
+
+### `aioscam.webapp` — серверный модуль для Max WebApps (мини-приложений)
+
+Реализовано полностью: двусторонняя связь Bot ↔ WebApp, не только валидация (как планировалось
+изначально в Future).
+
+- **`validate_init_data(raw, bot_token, max_age=3600)` → `WebAppInitData`** — HMAC-SHA256 проверка
+  подписи (`secret_key = HMAC(b"WebAppData", bot_token)`, `hash = HMAC(secret_key, sorted_check_string)`),
+  проверка возраста (`auth_date`)
+- **`validate_contact(...)` → `WebAppContact`** — отдельная HMAC-проверка для `requestContact()`
+  (`HMAC(bot_token, sorted(authDate, phone_no_plus, userId))`)
+- **`EventStreamManager`** (`aioscam/webapp/events.py`) — push-уведомления Bot → WebApp через
+  Server-Sent Events: per-`user_id` очереди, `publish()`, `broadcast()`, `active_users()`,
+  `connection_count()`, `stream()` (long-lived handler с heartbeat)
+- **`WebAppMiddleware`** (`aioscam/webapp/aiohttp.py`) — валидирует `initData` на каждый `/api/*`
+  запрос; пропускает всё что не начинается с `/api` и `/static` — статика остаётся публичной
+- initData принимается тремя способами: `Authorization: MaxWebApp <raw>`, `X-Webapp-Init-Data`
+  header, или `?initData=` query param — последнее нужно для `EventSource` (SSE), который не
+  умеет ставить кастомные заголовки
+- **`cors_middleware`** — настраиваемый `allow_origins`
+
+### `BotCapabilities` — отчёт о возможностях бота при старте (`aioscam/utils/capabilities.py`)
+
+Max API не отдаёт поле permissions/capabilities в `GET /me` (проверено живым пробником — только
+`user_id, first_name, username, is_bot, last_activity_time, description, avatar_url,
+full_avatar_url, commands, name`). `BotCapabilities.probe(bot, webapp_url=...)` собирает картину
+из профиля + конфигурации + warnings, чтобы не вводить пользователя в заблуждение о том, что
+доступно. `caps.log_report(logger)` печатает структурированный баннер при старте бота.
+Bridge-фичи (haptic/biometric/NFC/QR/contacts) явно документированы как клиентские —
+сервер не может знать платформу пользователя, это видно только на фронтенде (`bridge.platform`).
+
+### Информативные исключения — `.hint` на каждом exception (`aioscam/exceptions/exceptions.py`)
+
+Каждое исключение фреймворка теперь несёт `.hint` — конкретную причину/фикс, автоматически
+добавляется в `str(exc)`. Раньше `str(ApiError(...))` отдавал только сырое сообщение API;
+теперь `ApiError`, `NetworkError`, `TimeoutError`, `RetryAfter`, `UnauthorizedError`,
+`ForbiddenError`, `NotFoundError`, `BotTokenError`, `DispatcherError` — у каждого свой дефолтный
+hint (например `RetryAfter` прямо говорит сколько секунд подождать и предлагает понизить
+`rate_limit=`). Тот же паттерн используется в исключениях `aioscam.webapp`
+(`WebAppSignatureError`, `WebAppExpiredError`, `WebAppMissingFieldError`, `WebAppParseError`,
+`FeatureUnavailableError`).
+
+### Примеры — `examples/webapp_bot.py` + `examples/webapp/*.html`
+
+Полноценный рабочий бот с REST API (`GET /health`, `GET /api/me`, `POST /api/auth`,
+`POST /api/contact`, `POST /api/send`, `GET /api/events`) и 4 фронтенд-страницы:
+
+| Файл | Назначение |
+|------|-----------|
+| `index.html` | Канонический справочник нативного Max Bridge SDK (vanilla JS): haptic, QR, biometric, NFC, storage, навигация, SSE, отправка сообщений |
+| `index-vue.html` | Vue 3 (по CDN, без build step) — bot↔webapp чат через SSE, без дублирования Bridge-контролов |
+| `charts.html` | Chart.js — графики (линейный + донат), которых в Max нет нативно; питаются тем же SSE-потоком |
+| `table.html` | Сортируемая/фильтруемая таблица (vanilla JS) — тоже расширенный контрол сверх Max |
+| `max-bridge.js` | Promise-обёртка над `window.WebApp.*`, общая для всех страниц |
+
+Принцип разделения: нативные Bridge-контролы — только в `index.html`; примеры для других
+фреймворков показывают только bot↔webapp связь; расширенные UI-компоненты (графики, таблицы),
+которых в Max нет — отдельные файлы со своей библиотекой.
+
+> Тесты: 604/604 (было 569 на v0.1.8.1). Зависимостей не добавлено (только stdlib `hmac`/`hashlib` + существующий `aiohttp`).
+
+---
+
+## v0.1.8.1 — (2026-06-16)
 
 ### Hotfix: env var names + license (2026-06-16)
 - `Aioscam_ENV` → `AIOSCAM_ENV`, `Aioscam_API_URL` → `AIOSCAM_API_URL` в `aioscam/config.py`

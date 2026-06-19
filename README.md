@@ -4,21 +4,24 @@ Async Python framework for building Max messenger bots, inspired by aiogram arch
 
 ## Version
 
-**v0.1.8.1** — Latest (2026-06-16)
+**v0.2.0** — Latest (2026-06-19)
+
+### What's new in v0.2.0
+- ✅ **`aioscam.webapp`** — server-side module for Max WebApps (mini apps): `validate_init_data()` /
+  `validate_contact()` (HMAC-SHA256), `EventStreamManager` (SSE push, Bot → WebApp), `WebAppMiddleware`
+  (validates `initData` on `/api/*` requests, static files stay public)
+- ✅ **`BotCapabilities`** — `BotCapabilities.probe(bot)` reports what the bot can actually do at
+  startup, since `GET /me` carries no permissions field; `caps.log_report(logger)` prints a banner
+- ✅ **Hint-based exceptions everywhere** — every framework exception now carries a `.hint` with a
+  concrete cause/fix, appended automatically to `str(exc)` (`ApiError`, `NetworkError`, `RetryAfter`,
+  `UnauthorizedError`, `BotTokenError`, `DispatcherError`, and the new `WebApp*` exceptions)
+- ✅ **`examples/webapp_bot.py` + `examples/webapp/*.html`** — working bot with a REST+SSE API and
+  4 frontend pages (native Bridge SDK reference, Vue 3 demo, Chart.js, sortable table)
+- ✅ **604/604 tests passing**
 
 ### What's new in v0.1.8.1
 - ✅ **`AIOSCAM_ENV` / `AIOSCAM_API_URL`** — исправлен регистр env-переменных (`Aioscam_ENV` → `AIOSCAM_ENV`), на Linux mixed-case переменные не работали
 - ✅ **PolyForm Noncommercial License 1.0.0** — смена лицензии с MIT
-
-### What's new in v0.1.8
-- ✅ **`send_action()`** — fixed API path (`/chats/{chat_id}/actions`) and `SenderAction` values
-- ✅ **`SendCallback`** method object — answer callback queries via `bot.send_callback()`
-- ✅ **`send_message(autosplit=True)`** — opt-in splitting of messages >4000 chars, keyboard on last chunk
-- ✅ **StateGuard callbacks** — `state_guard_callbacks` now accepts `magic_filter.F` expressions
-  (`.startswith()`, `.contains()`, `.regexp()`, `& | ~`) alongside exact-match strings
-- ✅ **Parallel update processing** — `asyncio.create_task()` per update in `start_polling()`
-- ✅ **Streaming uploads/downloads** — no full in-memory reads for media
-- ✅ **569/569 tests passing**
 
 ## Features
 
@@ -40,6 +43,9 @@ Async Python framework for building Max messenger bots, inspired by aiogram arch
 - 📡 **Polling** — long-polling with exponential backoff
 - 🛡️ **Rate Limiter** — token bucket, 429 retry, exponential backoff
 - 🔒 **Security** — webhook secret token, circular router detection
+- 🪟 **WebApp (Mini Apps)** — `initData`/contact validation, SSE push (Bot → WebApp), `/api/*` middleware
+- 📊 **`BotCapabilities`** — capability/permission report logged at startup
+- 💡 **Hint-based exceptions** — every error tells you what to actually do about it
 - 📦 **Python 3.9–3.12**
 
 ## Installation
@@ -132,6 +138,34 @@ async def name(event, state):
     await event.answer("Step 2/4: Enter your age:")
 ```
 
+## WebApp (Max Mini Apps)
+
+Server-side helpers for two-way communication between your bot and a Max WebApp (mini app) running
+in the client's WebView:
+
+```python
+from aioscam.webapp import validate_init_data, EventStreamManager
+from aioscam.webapp.aiohttp import WebAppMiddleware
+from aioscam.utils.capabilities import BotCapabilities
+
+# Validate the signed initData a WebApp page sends you
+data = validate_init_data(raw_init_data, bot_token)  # -> WebAppInitData (HMAC-SHA256 checked)
+
+# Push events from the bot to a connected WebApp over SSE
+events = EventStreamManager()
+await events.publish(user_id, {"type": "bot_message", "text": "hi from the bot"})
+
+# Protect your /api/* routes (static files stay public)
+app.middlewares.append(WebAppMiddleware(bot_token=bot.token))
+
+# Log what this bot can actually do at startup
+caps = await BotCapabilities.probe(bot, webapp_url="https://example.com/webapp")
+caps.log_report(logger)
+```
+
+Full working example with a REST+SSE backend and 4 frontend pages (native Bridge SDK reference,
+Vue 3, Chart.js, sortable table): `examples/webapp_bot.py` + `examples/webapp/*.html`.
+
 ## Rate Limiter
 
 ```python
@@ -175,7 +209,8 @@ aioscam/
 ├── methods/      # BaseMethod, GetMe, SendMessage, GetUpdates
 ├── middleware/   # BaseMiddleware, MiddlewareManager
 ├── types/        # Pydantic models — User, Chat, Message, Attachment, etc.
-└── utils/        # KeyboardBuilder, formatting, deep_linking, media
+├── utils/        # KeyboardBuilder, formatting, deep_linking, media, BotCapabilities
+└── webapp/       # validate_init_data, validate_contact, EventStreamManager, WebAppMiddleware
 ```
 
 ## Configuration
@@ -191,7 +226,7 @@ AIOSCAM_ENV=prod   # debug | test | prod
 python -m pytest tests/ -v
 ```
 
-**202/202 tests passing (100%)**
+**604/604 tests passing (100%)**
 
 ## Example Bots
 
@@ -212,6 +247,7 @@ python -m pytest tests/ -v
 | `methods_bot.py` | Methods API demo |
 | `demo_bot.py` | Full-featured demo (FSM, media, i18n, deep links, SQLAlchemy) |
 | `run_bot.py` | Minimal launcher |
+| `webapp_bot.py` | WebApp REST+SSE backend — `examples/webapp/*.html` frontends |
 
 ## License
 

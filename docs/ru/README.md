@@ -1,6 +1,6 @@
 # AioScam — Документация (RU)
 
-**v0.1.8.1** | [English](../en/README.md)
+**v0.2.0** | [English](../en/README.md)
 
 ## Оглавление
 
@@ -19,7 +19,10 @@
 13. [I18n](#i18n)
 14. [Rate Limiter](#rate-limiter)
 15. [Webhook](#webhook)
-16. [Конфигурация](#конфигурация)
+16. [WebApp (мини-приложения)](#webapp-мини-приложения)
+17. [BotCapabilities](#botcapabilities)
+18. [Исключения и hint](#исключения-и-hint)
+19. [Конфигурация](#конфигурация)
 
 ---
 
@@ -97,7 +100,8 @@ aioscam/
 ├── methods/      # BaseMethod, GetMe, SendMessage, GetUpdates
 ├── middleware/   # BaseMiddleware, MiddlewareManager
 ├── types/        # Pydantic-модели (User, Chat, Message, Attachment, …)
-└── utils/        # KeyboardBuilder, formatting, deep_linking, media
+├── utils/        # KeyboardBuilder, formatting, deep_linking, media, BotCapabilities
+└── webapp/       # validate_init_data, validate_contact, EventStreamManager, WebAppMiddleware
 ```
 
 ---
@@ -500,6 +504,109 @@ await dp.handle_webhook(
     secret_token="your_secret",
 )
 ```
+
+---
+
+## WebApp (мини-приложения)
+
+Max открывает мини-приложения (WebApp) как обычный HTML/CSS/JS внутри WebView клиента.
+`aioscam.webapp` — серверная часть: проверка того, что присылает страница, и push-уведомления
+обратно через SSE.
+
+### Валидация `initData`
+
+Каждая страница мини-приложения получает подписанную строку `initData` из `window.WebApp.initData`.
+Проверяйте её на сервере перед тем как доверять содержимому:
+
+```python
+from aioscam.webapp import validate_init_data, WebAppSignatureError, WebAppExpiredError
+
+try:
+    data = validate_init_data(raw_init_data, bot_token, max_age=3600)
+except WebAppSignatureError:
+    ...  # подпись не совпала — данные подделаны или не тот bot_token
+except WebAppExpiredError:
+    ...  # auth_date старше max_age
+
+print(data.user.id, data.start_param)
+```
+
+`validate_contact(...)` — аналогичная HMAC-проверка для payload из `requestContact()`.
+
+### Push-уведомления в WebApp (SSE)
+
+```python
+from aioscam.webapp import EventStreamManager
+
+events = EventStreamManager()
+
+# в хендлере роута /api/events:
+async def sse_handler(request):
+    return await events.stream(request, user_id=data.user.id)
+
+# в любом другом месте бота:
+await events.publish(user_id=123, {"type": "bot_message", "text": "привет из бота"})
+await events.broadcast({"type": "announcement", "text": "деплой завершён"})
+```
+
+`EventSource` (браузерный API под SSE) не умеет ставить кастомные заголовки, поэтому страница
+передаёт `initData` через query-параметр: `GET /api/events?initData=<raw>`.
+`WebAppMiddleware` принимает `initData` из `Authorization: MaxWebApp <raw>`, заголовка
+`X-Webapp-Init-Data` или `?initData=` — именно в этом порядке.
+
+### Защита `/api/*` роутов
+
+```python
+from aioscam.webapp.aiohttp import WebAppMiddleware
+
+app.middlewares.append(WebAppMiddleware(bot_token=bot.token))
+```
+
+Middleware валидирует только запросы с путём, начинающимся на `/api`; всё остальное (включая
+`/static/*` и HTML-страницы) остаётся без проверки и доступно публично.
+
+Полный рабочий пример — REST-эндпоинты (`/api/auth`, `/api/contact`, `/api/send`), SSE-эндпоинт
+и 4 фронтенд-страницы — в `examples/webapp_bot.py` + `examples/webapp/*.html`.
+
+---
+
+## BotCapabilities
+
+`GET /me` в Max API не отдаёт поле permissions/capabilities, поэтому `BotCapabilities` собирает
+картину из профиля бота и конфигурации, чтобы не дать вам предположить наличие функций, которые
+на самом деле не настроены:
+
+```python
+from aioscam.utils.capabilities import BotCapabilities
+
+caps = await BotCapabilities.probe(bot, webapp_url="https://example.com/webapp")
+caps.log_report(logger)  # структурированный баннер при старте, включая warnings
+```
+
+Фичи Bridge SDK (haptic, биометрия, NFC, QR, контакты) — клиентские: сервер не может знать
+платформу пользователя, поэтому они не входят в этот отчёт; проверяйте `window.WebApp.platform`
+на фронтенде.
+
+---
+
+## Исключения и hint
+
+Каждое исключение фреймворка несёт `.hint` — конкретную причину или фикс — он автоматически
+добавляется при `str()`:
+
+```python
+try:
+    bot = Bot()
+except BotTokenError as e:
+    print(e)  # "Bot token is not provided — pass token=... to Bot(), or set the MAX_BOT_TOKEN environment variable"
+    print(e.hint)  # только hint
+```
+
+`ApiError`, `NetworkError`, `TimeoutError`, `RetryAfter`, `UnauthorizedError`, `ForbiddenError`,
+`NotFoundError`, `BotTokenError`, `DispatcherError` и исключения `WebApp*`
+(`WebAppSignatureError`, `WebAppExpiredError`, `WebAppMissingFieldError`, `WebAppParseError`,
+`FeatureUnavailableError`) несут дефолтный hint — переопределяется через `hint=...` при raise,
+если нужна более конкретная подсказка.
 
 ---
 

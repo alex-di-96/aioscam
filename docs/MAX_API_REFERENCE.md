@@ -102,9 +102,23 @@
 | `message` | `label`, `text` | Отправка текста |
 | `chat` | `label`, `chat_id` | Переход в чат |
 | `clipboard` | `label`, `clipboard_text` | Копировать в буфер |
-| `open_app` | `label`, `url` | Открыть приложение |
+| `open_app` | `label`, `web_app`, `contact_id?`, `payload?` | Открыть мини-приложение (WebApp) |
 | `request_contact` | `label` | Запрос контакта |
 | `request_geo_location` | `label` | Запрос геолокации |
+
+---
+
+## WebApp (мини-приложения)
+
+Мини-приложения Max — отдельная подсистема: открываются клиентом как HTML/CSS/JS в WebView через
+кнопку `OpenAppButton` (`web_app`/`contact_id`/`payload`, см. таблицу выше) или диплинк
+`https://max.ru/<botName>?startapp=<payload>`. На стороне фронтенда работает MAX Bridge JS SDK
+(`window.WebApp.*`, подключается через `<script src="https://st.max.ru/js/max-web-app.js">`) —
+это НЕ часть Bot HTTP API выше, а отдельный браузерный JS API, описанный на
+https://dev.max.ru/docs/webapps/bridge.
+
+Серверная валидация того, что присылает WebApp (`initData`, контакты) — модуль `aioscam.webapp`,
+задокументирован в `docs/ru/README.md` / `docs/en/README.md` (разделы WebApp / BotCapabilities).
 
 ---
 

@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ru">
+<!--
+  AioScam WebApp — Table demo
+  ─────────────────────────────
+  Max Bridge SDK не предоставляет компонента таблицы с сортировкой/фильтром —
+  это пример РАСШИРЕННОГО контрола, реализованного на чистом JS (без сторонней
+  библиотеки — для таблицы она и не нужна, в отличие от Chart.js для графиков).
+
+  Строки — это лента событий из /api/events (тот же SSE-канал, что в index.html /
+  index-vue.html / charts.html). Поддерживается сортировка по столбцам,
+  текстовый фильтр и фильтр по типу события.
+
+  Bridge SDK (haptic, QR, biometric, NFC, storage) — в index.html.
+  Bot ↔ WebApp чат на Vue — в index-vue.html.
+  Графики — в charts.html.
+-->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AioScam WebApp — Table</title>
+<script src="https://st.max.ru/js/max-web-app.js"></script>
+<script src="max-bridge.js"></script>
+<style>
+  :root {
+    --bg:#0f0f0f; --surface:#1a1a1a; --border:#2a2a2a;
+    --accent:#5b8dee; --success:#34c759; --warning:#ff9f0a;
+    --error:#ff453a; --text:#e5e5e7; --muted:#8e8e93; --r:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:16px 16px 48px}
+
+  .hdr{display:flex;align-items:center;gap:12px;padding:16px;background:var(--surface);border-radius:var(--r);margin-bottom:16px}
+  .av{width:48px;height:48px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:600;flex-shrink:0;overflow:hidden}
+  .av img{width:100%;height:100%;object-fit:cover}
+  .ui h2{font-size:16px;font-weight:600}
+  .ui p{font-size:13px;color:var(--muted);margin-top:2px}
+  .badge{margin-left:auto;font-size:11px;padding:4px 8px;border-radius:20px;background:var(--border);color:var(--muted)}
+  .badge.live{background:#1a2e1a;color:var(--success)}
+
+  .nav-links{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+  .nav-link{font-size:12px;padding:5px 10px;border-radius:6px;background:var(--surface);color:var(--muted);text-decoration:none;border:1px solid var(--border)}
+  .nav-link:hover{color:var(--text);border-color:var(--accent)}
+  .nav-link.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+  .source-note{font-size:11px;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:16px;line-height:1.5}
+  .source-note b{color:var(--text)}
+
+  section{background:var(--surface);border-radius:var(--r);margin-bottom:12px;padding:16px}
+  .stitle{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+
+  .sse-row{display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .3s}
+  .dot.ok{background:var(--success);box-shadow:0 0 6px var(--success)}
+
+  .toolbar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .toolbar input,.toolbar select{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:13px;outline:none}
+  .toolbar input{flex:1;min-width:120px}
+  .toolbar input:focus,.toolbar select:focus{border-color:var(--accent)}
+
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  thead th{text-align:left;padding:8px 10px;color:var(--muted);font-weight:500;cursor:pointer;user-select:none;white-space:nowrap;border-bottom:1px solid var(--border)}
+  thead th:hover{color:var(--text)}
+  thead th .arrow{margin-left:4px;color:var(--accent);display:inline-block;width:10px}
+  tbody td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  tbody tr:hover{background:rgba(255,255,255,0.03)}
+  tbody tr:last-child td{border-bottom:none}
+
+  .type-pill{font-size:10px;padding:2px 7px;border-radius:10px;white-space:nowrap}
+  .type-pill.bot_message{background:#1a2e1a;color:var(--success)}
+  .type-pill.chat_message{background:#332a16;color:var(--warning)}
+  .type-pill.message_sent{background:#16202e;color:var(--accent)}
+  .type-pill.contact_shared{background:#2e1616;color:var(--error)}
+  .type-pill.connected{background:var(--border);color:var(--muted)}
+
+  .col-body{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .col-time{color:var(--muted);white-space:nowrap}
+
+  .empty-row td{text-align:center;color:var(--muted);font-style:italic;padding:30px 0}
+
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:none;border-radius:8px;background:var(--border);color:var(--text);font-size:12px;cursor:pointer}
+  .btn:active{opacity:.7}
+
+  .tfoot{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:11px;color:var(--muted)}
+
+  .table-scroll{overflow-x:auto}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="av"><img id="avatar-img" style="display:none"><span id="avatar-fallback">?</span></div>
+  <div class="ui">
+    <h2 id="user-name">Загрузка...</h2>
+    <p id="user-meta"></p>
+  </div>
+  <span class="badge" id="platform-badge">web</span>
+</header>
+
+<nav class="nav-links">
+  <a class="nav-link" href="/">Bridge SDK</a>
+  <a class="nav-link" href="/index-vue.html">Vue Demo</a>
+  <a class="nav-link" href="/charts.html">Charts</a>
+  <span class="nav-link active">Table</span>
+</nav>
+
+<div class="source-note">
+  <b>Откуда данные:</b> сортируемая/фильтруемая таблица — компонент, которого
+  в нативном Max Bridge SDK нет. Строки — события из того же SSE-канала
+  <code>/api/events</code>, что в index.html / index-vue.html / charts.html.
+  Напишите боту <code>/echo текст</code> — строка появится в таблице.
+</div>
+
+<section>
+  <div class="stitle">
+    <span>События (живая таблица)</span>
+    <div class="sse-row">
+      <div class="dot" id="sse-dot"></div>
+      <span id="sse-label" style="font-size:12px">Не подключено</span>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <input id="filter-text" type="text" placeholder="Фильтр по тексту...">
+    <select id="filter-type">
+      <option value="">Все типы</option>
+      <option value="bot_message">bot_message</option>
+      <option value="chat_message">chat_message</option>
+      <option value="message_sent">message_sent</option>
+      <option value="contact_shared">contact_shared</option>
+      <option value="connected">connected</option>
+    </select>
+    <button class="btn" id="clear-btn">Очистить</button>
+  </div>
+
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th data-key="time">Время<span class="arrow" data-arrow="time"></span></th>
+          <th data-key="type">Тип<span class="arrow" data-arrow="type"></span></th>
+          <th data-key="len">Длина<span class="arrow" data-arrow="len"></span></th>
+          <th data-key="body">Содержимое<span class="arrow" data-arrow="body"></span></th>
+        </tr>
+      </thead>
+      <tbody id="tbody">
+        <tr class="empty-row"><td colspan="4">Ждём событий от бота…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="tfoot">
+    <span id="row-count">0 строк</span>
+    <span id="sort-info"></span>
+  </div>
+</section>
+
+<script>
+const bridge = new MaxBridge();
+const API = "";
+
+// ── Header ────────────────────────────────────────────────────────────────
+(function initHeader() {
+  const u = bridge.user;
+  document.getElementById("platform-badge").textContent = bridge.platform || "web";
+  if (bridge.isAvailable) document.getElementById("platform-badge").classList.add("live");
+  if (u) {
+    document.getElementById("user-name").textContent =
+      [u.first_name, u.last_name].filter(Boolean).join(" ") || "Пользователь";
+    const meta = [];
+    if (u.username) meta.push("@" + u.username);
+    if (!bridge.isAvailable) meta.push("вне Max");
+    document.getElementById("user-meta").textContent = meta.join(" · ");
+    if (u.photo_url) {
+      const img = document.getElementById("avatar-img");
+      img.src = u.photo_url; img.style.display = "block";
+      document.getElementById("avatar-fallback").style.display = "none";
+    } else {
+      document.getElementById("avatar-fallback").textContent = (u.first_name || "?")[0].toUpperCase();
+    }
+  } else {
+    document.getElementById("user-name").textContent = "Гость";
+    document.getElementById("user-meta").textContent = "вне Max";
+  }
+})();
+
+// ── State ─────────────────────────────────────────────────────────────────
+let rows = [];
+let sortKey = "time";
+let sortDir = -1; // newest first
+let filterText = "";
+let filterType = "";
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+function extractText(data) {
+  return data.text || data.message || JSON.stringify(data);
+}
+
+function render() {
+  const tbody = document.getElementById("tbody");
+  let view = rows.filter(r => {
+    if (filterType && r.type !== filterType) return false;
+    if (filterText && !r.body.toLowerCase().includes(filterText.toLowerCase())) return false;
+    return true;
+  });
+
+  view.sort((a, b) => {
+    const av = a[sortKey], bv = b[sortKey];
+    if (av < bv) return -1 * sortDir;
+    if (av > bv) return 1 * sortDir;
+    return 0;
+  });
+
+  if (!view.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="4">${rows.length ? 'Нет строк под текущим фильтром' : 'Ждём событий от бота…'}</td></tr>`;
+  } else {
+    tbody.innerHTML = view.map(r => `
+      <tr>
+        <td class="col-time">${r.timeLabel}</td>
+        <td><span class="type-pill ${escapeHtml(r.type)}">${escapeHtml(r.type)}</span></td>
+        <td>${r.len}</td>
+        <td class="col-body" title="${escapeHtml(r.body)}">${escapeHtml(r.body)}</td>
+      </tr>
+    `).join("");
+  }
+
+  document.getElementById("row-count").textContent =
+    `${view.length} из ${rows.length} строк`;
+  document.getElementById("sort-info").textContent =
+    `сортировка: ${sortKey} ${sortDir === 1 ? "↑" : "↓"}`;
+
+  document.querySelectorAll(".arrow").forEach(el => {
+    el.textContent = el.dataset.arrow === sortKey ? (sortDir === 1 ? "↑" : "↓") : "";
+  });
+}
+
+document.querySelectorAll("thead th").forEach(th => {
+  th.addEventListener("click", () => {
+    const key = th.dataset.key;
+    if (sortKey === key) sortDir *= -1;
+    else { sortKey = key; sortDir = -1; }
+    render();
+  });
+});
+
+document.getElementById("filter-text").addEventListener("input", (e) => {
+  filterText = e.target.value;
+  render();
+});
+document.getElementById("filter-type").addEventListener("change", (e) => {
+  filterType = e.target.value;
+  render();
+});
+document.getElementById("clear-btn").addEventListener("click", () => {
+  rows = [];
+  render();
+});
+
+function onEvent(type, data) {
+  const text = extractText(data);
+  const now = new Date();
+  rows.push({
+    type,
+    body: String(text),
+    len: String(text).length,
+    time: now.getTime(),
+    timeLabel: now.toLocaleTimeString(),
+  });
+  if (rows.length > 200) rows.shift();
+  render();
+  if (type === "bot_message") bridge.haptic?.notification?.("success").catch(() => {});
+}
+
+// ── SSE ───────────────────────────────────────────────────────────────────
+function setSseState(ok, label) {
+  document.getElementById("sse-dot").classList.toggle("ok", ok);
+  document.getElementById("sse-label").textContent = label;
+}
+
+function connectSSE() {
+  if (!bridge.initData) { setSseState(false, "initData недоступен (откройте внутри Max)"); return; }
+  const url = API + "/api/events?initData=" + encodeURIComponent(bridge.initData);
+  const es = new EventSource(url);
+  es.addEventListener("connected", (e) => {
+    setSseState(true, "Подключено");
+    onEvent("connected", JSON.parse(e.data));
+  });
+  ["bot_message", "chat_message", "message_sent", "contact_shared"].forEach(t => {
+    es.addEventListener(t, (e) => {
+      try { onEvent(t, JSON.parse(e.data)); } catch (_) {}
+    });
+  });
+  es.onerror = () => setSseState(false, "Ошибка, переподключение…");
+}
+
+connectSSE();
+render();
+</script>
+</body>
+</html>

@@ -68,10 +68,7 @@ class Bot:
         """
         self.token = token or os.getenv("MAX_BOT_TOKEN")
         if not self.token:
-            raise BotTokenError(
-                "Bot token is not provided. "
-                "Pass it explicitly or set MAX_BOT_TOKEN environment variable."
-            )
+            raise BotTokenError("Bot token is not provided")
 
         self.parse_mode = parse_mode
         self.auto_brand = auto_brand

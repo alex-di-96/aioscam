@@ -262,7 +262,7 @@ class AioScamClient:
             raise NotFoundError(error_msg, code=response.code, response=response.result)
         elif response.status_code == 429:
             retry_after = response.result.get("retry_after", 1) if response.result else 1
-            raise RetryAfter(error_msg, retry_after=retry_after)
+            raise RetryAfter(error_msg, retry_after=retry_after, code=response.code, response=response.result)
         else:
             raise ApiError(error_msg, code=response.code, response=response.result)
 

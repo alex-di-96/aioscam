@@ -303,6 +303,51 @@ async def main():
         await asyncio.sleep(3600)
 ```
 
+## WebApp Mode (Mini Apps)
+
+Max WebApps run as HTML/CSS/JS inside the client's WebView. `aioscam.webapp` validates what the
+page sends you and pushes events back to it over SSE:
+
+```python
+from aiohttp import web
+from aioscam.webapp import validate_init_data, EventStreamManager
+from aioscam.webapp.aiohttp import WebAppMiddleware
+
+events = EventStreamManager()
+
+async def api_send(request):
+    raw_init_data = request.headers.get("Authorization", "").removeprefix("MaxWebApp ")
+    data = validate_init_data(raw_init_data, bot.token)
+    body = await request.json()
+    await bot.send_message(chat_id=data.chat.id, user_id=data.user.id, text=body["text"])
+    return web.json_response({"ok": True})
+
+async def api_events(request):
+    raw_init_data = request.query.get("initData", "")
+    data = validate_init_data(raw_init_data, bot.token)
+    return await events.stream(request, user_id=data.user.id)
+
+app = web.Application(middlewares=[WebAppMiddleware(bot_token=bot.token)])
+app.router.add_post("/api/send", api_send)
+app.router.add_get("/api/events", api_events)
+app.router.add_static("/", path="examples/webapp/")
+```
+
+`WebAppMiddleware` only validates paths starting with `/api` — static HTML/JS pages stay public.
+A full example (REST+SSE backend, 4 frontend pages) is in `examples/webapp_bot.py` +
+`examples/webapp/*.html`.
+
+## Bot Capability Report
+
+`GET /me` carries no permissions field, so check what your bot can actually do at startup:
+
+```python
+from aioscam.utils.capabilities import BotCapabilities
+
+caps = await BotCapabilities.probe(bot, webapp_url="https://example.com/webapp")
+caps.log_report(logger)
+```
+
 ## Error Handling
 
 ### Exceptions
@@ -322,6 +367,16 @@ except ApiError as e:
     print(f"API error: {e.code} - {e.message}")
 except NetworkError as e:
     print(f"Network error: {e}")
+```
+
+Every exception carries a `.hint` with a concrete cause/fix, appended automatically to `str(e)`:
+
+```python
+try:
+    bot = Bot()
+except BotTokenError as e:
+    print(e)       # "Bot token is not provided — pass token=... to Bot(), or set the MAX_BOT_TOKEN environment variable"
+    print(e.hint)  # just the hint part
 ```
 
 ## API Reference
@@ -377,7 +432,7 @@ async def on_repeat_deeplink(event, state):
 
 ## Examples
 
-See `examples/` directory (15 bots):
+See `examples/` directory (16 bots):
 
 | File | Description |
 |------|-------------|
@@ -396,6 +451,7 @@ See `examples/` directory (15 bots):
 | `router_bot.py` | Multiple routers and filtering |
 | `run_bot.py` | Production-ready launcher |
 | `webhook_bot.py` | Webhook mode with aiohttp |
+| `webapp_bot.py` | WebApp (Mini App) REST+SSE backend — see `examples/webapp/*.html` |
 
 ## License
 

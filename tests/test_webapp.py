@@ -168,7 +168,7 @@ class TestValidateInitDataErrors:
     def test_missing_hash(self):
         params = _fresh_params()
         raw = urlencode(params)  # no hash field
-        with pytest.raises(WebAppDataError, match="missing the 'hash'"):
+        with pytest.raises(WebAppDataError, match="missing required field: 'hash'"):
             validate_init_data(raw, BOT_TOKEN)
 
     def test_wrong_hash(self):

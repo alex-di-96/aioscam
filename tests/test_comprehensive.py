@@ -641,7 +641,9 @@ class TestExceptions:
         from aioscam.exceptions import ApiError
 
         error = ApiError("Test error", code=400, response={"error": "test"})
-        assert str(error) == "Test error"
+        assert error.message == "Test error"
+        assert str(error).startswith("Test error")
+        assert error.hint  # ApiError carries a default hint pointing at .response/.code
         assert error.code == 400
         assert error.response["error"] == "test"
 
@@ -650,7 +652,9 @@ class TestExceptions:
         from aioscam.exceptions import NetworkError
 
         error = NetworkError("Connection failed", status=500)
-        assert str(error) == "Connection failed"
+        assert error.message == "Connection failed"
+        assert str(error).startswith("Connection failed")
+        assert error.hint  # NetworkError carries a default connectivity hint
         assert error.status == 500
 
 

@@ -263,7 +263,10 @@ class Dispatcher(Router):
         """
         async with self._lock:
             if self._running:
-                raise DispatcherError("Polling is already running")
+                raise DispatcherError(
+                    "Polling is already running",
+                    hint="call stop_polling() first, or check for a duplicate start_polling() call",
+                )
             self._running = True
 
         logger.info("Starting polling...")

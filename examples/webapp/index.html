@@ -55,6 +55,11 @@
   .user-info h2 { font-size: 16px; font-weight: 600; }
   .user-info p { font-size: 13px; color: var(--muted); margin-top: 2px; }
 
+  .nav-links{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+  .nav-link{font-size:12px;padding:5px 10px;border-radius:6px;background:var(--surface);color:var(--muted);text-decoration:none;border:1px solid var(--border)}
+  .nav-link:hover{color:var(--text);border-color:var(--accent)}
+  .nav-link.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+
   .badge {
     margin-left: auto;
     font-size: 11px;
@@ -234,6 +239,13 @@
   </div>
   <span class="badge" id="platform-badge">web</span>
 </header>
+
+<nav class="nav-links">
+  <span class="nav-link active">Bridge SDK</span>
+  <a class="nav-link" href="/index-vue.html">Vue Demo</a>
+  <a class="nav-link" href="/charts.html">Charts</a>
+  <a class="nav-link" href="/table.html">Table</a>
+</nav>
 
 <!-- Auth -->
 <section>

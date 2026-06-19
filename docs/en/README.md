@@ -1,6 +1,6 @@
 # AioScam — Documentation (EN)
 
-**v0.1.8.1** | [Русский](../ru/README.md)
+**v0.2.0** | [Русский](../ru/README.md)
 
 ## Table of Contents
 
@@ -19,7 +19,10 @@
 13. [I18n](#i18n)
 14. [Rate Limiter](#rate-limiter)
 15. [Webhook](#webhook)
-16. [Configuration](#configuration)
+16. [WebApp (Mini Apps)](#webapp-mini-apps)
+17. [BotCapabilities](#botcapabilities)
+18. [Exceptions & Hints](#exceptions--hints)
+19. [Configuration](#configuration)
 
 ---
 
@@ -85,7 +88,8 @@ aioscam/
 ├── methods/      # BaseMethod, GetMe, SendMessage, GetUpdates
 ├── middleware/   # BaseMiddleware, MiddlewareManager
 ├── types/        # Pydantic models — User, Chat, Message, Attachment, etc.
-└── utils/        # KeyboardBuilder, formatting, deep_linking, media
+├── utils/        # KeyboardBuilder, formatting, deep_linking, media, BotCapabilities
+└── webapp/       # validate_init_data, validate_contact, EventStreamManager, WebAppMiddleware
 ```
 
 ---
@@ -330,6 +334,109 @@ bot = Bot(rate_limit=RateLimitConfig.relaxed())  # 30 req/s
 await dp.handle_webhook(bot=bot, host="0.0.0.0", port=8080,
                         path="/webhook", secret_token="secret")
 ```
+
+---
+
+## WebApp (Mini Apps)
+
+Max opens WebApps (mini apps) as plain HTML/CSS/JS inside the client's WebView. `aioscam.webapp`
+provides the server-side half: validating what the WebApp page sends you, and pushing events back
+to it over SSE.
+
+### Validating `initData`
+
+Every Max WebApp page receives a signed `initData` string from `window.WebApp.initData`. Validate
+it server-side before trusting any of it:
+
+```python
+from aioscam.webapp import validate_init_data, WebAppSignatureError, WebAppExpiredError
+
+try:
+    data = validate_init_data(raw_init_data, bot_token, max_age=3600)
+except WebAppSignatureError:
+    ...  # tampered or wrong bot_token
+except WebAppExpiredError:
+    ...  # auth_date older than max_age
+
+print(data.user.id, data.start_param)
+```
+
+`validate_contact(...)` does the same HMAC check for the payload returned by `requestContact()`.
+
+### Pushing events to the WebApp (SSE)
+
+```python
+from aioscam.webapp import EventStreamManager
+
+events = EventStreamManager()
+
+# in your /api/events route handler:
+async def sse_handler(request):
+    return await events.stream(request, user_id=data.user.id)
+
+# anywhere else in the bot:
+await events.publish(user_id=123, {"type": "bot_message", "text": "hi from the bot"})
+await events.broadcast({"type": "announcement", "text": "deploy done"})
+```
+
+`EventSource` (the browser API behind SSE) cannot set custom headers, so the WebApp page passes
+`initData` as a query parameter on the SSE request: `GET /api/events?initData=<raw>`.
+`WebAppMiddleware` accepts `initData` from `Authorization: MaxWebApp <raw>`, the
+`X-Webapp-Init-Data` header, or the `?initData=` query param — in that order.
+
+### Protecting your `/api/*` routes
+
+```python
+from aioscam.webapp.aiohttp import WebAppMiddleware
+
+app.middlewares.append(WebAppMiddleware(bot_token=bot.token))
+```
+
+The middleware only validates requests whose path starts with `/api`; everything else (including
+`/static/*` and your HTML pages) is left untouched and stays publicly reachable.
+
+A full working example — REST endpoints (`/api/auth`, `/api/contact`, `/api/send`), the SSE
+endpoint, and 4 frontend pages — lives in `examples/webapp_bot.py` + `examples/webapp/*.html`.
+
+---
+
+## BotCapabilities
+
+Max's `GET /me` does not expose a permissions/capabilities field, so `BotCapabilities` builds a
+best-effort picture from the bot's profile and configuration instead of letting you assume
+features that may not be set up:
+
+```python
+from aioscam.utils.capabilities import BotCapabilities
+
+caps = await BotCapabilities.probe(bot, webapp_url="https://example.com/webapp")
+caps.log_report(logger)  # structured banner at startup, including warnings
+```
+
+Bridge SDK features (haptics, biometrics, NFC, QR, contacts) are client-side only — the server has
+no way to know the end user's platform, so they are not part of this report; check
+`window.WebApp.platform` in the frontend instead.
+
+---
+
+## Exceptions & Hints
+
+Every framework exception carries a `.hint` — a concrete reason or fix — appended automatically
+when you `str()` it:
+
+```python
+try:
+    bot = Bot()
+except BotTokenError as e:
+    print(e)  # "Bot token is not provided — pass token=... to Bot(), or set the MAX_BOT_TOKEN environment variable"
+    print(e.hint)  # just the hint
+```
+
+`ApiError`, `NetworkError`, `TimeoutError`, `RetryAfter`, `UnauthorizedError`, `ForbiddenError`,
+`NotFoundError`, `BotTokenError`, `DispatcherError`, and the `WebApp*` exceptions
+(`WebAppSignatureError`, `WebAppExpiredError`, `WebAppMissingFieldError`, `WebAppParseError`,
+`FeatureUnavailableError`) all carry a sensible default hint — override it with `hint=...` on the
+raise if you need something more specific.
 
 ---
 
