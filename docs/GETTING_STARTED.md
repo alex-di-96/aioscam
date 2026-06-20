@@ -306,7 +306,8 @@ async def main():
 ## WebApp Mode (Mini Apps)
 
 Max WebApps run as HTML/CSS/JS inside the client's WebView. `aioscam.webapp` validates what the
-page sends you and pushes events back to it over SSE:
+page sends you and pushes events back to it over SSE. No extra install is needed — it only uses
+`aiohttp` and `pydantic`, both already required by `pip install aioscam`:
 
 ```python
 from aiohttp import web

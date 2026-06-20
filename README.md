@@ -62,6 +62,10 @@ pip install aioscam[litestar]  # Litestar webhook
 pip install aioscam[dev]       # pytest, ruff, mypy
 ```
 
+`aioscam.webapp` (WebApp/Mini App support — `validate_init_data`, `EventStreamManager`,
+`WebAppMiddleware`) needs **no extra install** — it only uses `aiohttp` and `pydantic`, both
+already required by the base package. A plain `pip install aioscam` is enough.
+
 ## Quick Start
 
 ```python

@@ -44,6 +44,11 @@ pip install aioscam[litestar]
 pip install aioscam[dev]
 ```
 
+`aioscam.webapp` (поддержка WebApp/мини-приложений) **не требует** отдельной установки — он
+использует только `aiohttp` и `pydantic`, которые уже обязательны для базового пакета.
+Отдельного `aioscam[webapp]` нет и не нужен: обычный `pip install aioscam` уже даёт
+`validate_init_data`, `EventStreamManager` и `WebAppMiddleware`.
+
 **Требования:** Python 3.9–3.12, aiohttp>=3.9, aiofiles>=23.0, pydantic>=2.0, magic-filter>=1.0
 
 ---
