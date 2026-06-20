@@ -1,5 +1,34 @@
 # AioScam Roadmap
 
+## Unreleased
+
+### `HomePage` — generic landing page for WebApp servers (`aioscam/webapp/homepage.py`)
+
+Мотивация: `WebAppMiddleware` отвечает 401 с одинаковым JSON и на отсутствующий, и на неверный
+`initData` — слепой перебор путей (`/api/me`, `/api/auth`, ...) по самому факту структурированного
+401 узнаёт, что эндпоинт существует. `HomePage` закрывает корень сервера (`/`) безопасной generic
+страницей вместо хардкод `index.html`/raw file response — посетитель без JS видит имя/описание
+бота и кнопку "Open in Max" (deep link через `create_deep_link`), ничего не намекает на `/api/*`.
+Внутри клиента Max та же страница подгружает Bridge SDK и может быть стартовым экраном мини-приложения.
+
+- `HomePage(bot=None, title=None, description=None, username=None, deep_link_payload="",
+  lang="ru", show_open_in_max=True, extra_head="", extra_body="")` — экспортируется из
+  `aioscam.webapp.aiohttp` (живёт там же, где `WebAppMiddleware`/`cors_middleware`)
+- Имя/описание/username берутся из `bot.get_me()` один раз и кешируются на странице; явные
+  параметры конструктора их переопределяют без обращения к боту
+- `extra_head`/`extra_body` — точки расширения для собственной разметки/скриптов мини-приложения
+  поверх дефолтной обёртки — не хардкод под один проект, а конфигурируемый каркас
+- `examples/webapp_bot.py` обновлён: интерактивный демо-фронтенд (`index.html` и т.д.) переехал
+  с `/` на `/app` — в Max bot dashboard как Mini App URL регистрируется `WEBAPP_URL + /app`,
+  а bare `WEBAPP_URL` отдаёт только `HomePage`
+- No-JS ограничение задокументировано как платформенное, не решаемое на уровне фреймворка: Max
+  передаёт `initData` только через инжектируемый клиентом JS-объект `window.WebApp`
+  (`examples/webapp/max-bridge.js:41`), URL-фрагмент fallback (как `tgWebAppData` у Telegram)
+  у Max нет — без выполнения JS сервер не может получить подписанные данные вообще
+- Тесты: `tests/test_webapp_homepage.py` (11 тестов, 615/615 всего)
+
+---
+
 ## v0.2.0 — Current (2026-06-19)
 
 ### `aioscam.webapp` — серверный модуль для Max WebApps (мини-приложений)

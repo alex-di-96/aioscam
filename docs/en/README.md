@@ -400,6 +400,26 @@ app.middlewares.append(WebAppMiddleware(bot_token=bot.token))
 The middleware only validates requests whose path starts with `/api`; everything else (including
 `/static/*` and your HTML pages) is left untouched and stays publicly reachable.
 
+### Landing page
+
+`WebAppMiddleware` answers a missing or an invalid `initData` with the same structured 401 — which
+means a plain path scanner learns that `/api/me`, `/api/auth`, etc. exist just by hitting them.
+`HomePage` gives the bare server root something safe to show instead of a hand-written `index.html`:
+bot name/description (from `bot.get_me()`) and an "Open in Max" deep link, no JS required, nothing
+that hints at `/api/*`. Mount your actual Mini App frontend under its own path and register *that*
+path — not the bare root — as the Mini App URL in the Max bot dashboard:
+
+```python
+from aioscam.webapp.aiohttp import HomePage
+
+app.router.add_get("/", HomePage(bot).handler)              # public landing page
+app.router.add_get("/app", serve_index)                     # Mini App URL registered in the dashboard
+app.router.add_static("/app", path=str(STATIC_DIR))
+```
+
+`HomePage(bot, title=..., description=..., extra_head=..., extra_body=...)` lets you override the
+copy or inject your own markup/scripts on top of the default shell — see `examples/webapp_bot.py`.
+
 A full working example — REST endpoints (`/api/auth`, `/api/contact`, `/api/send`), the SSE
 endpoint, and 4 frontend pages — lives in `examples/webapp_bot.py` + `examples/webapp/*.html`.
 

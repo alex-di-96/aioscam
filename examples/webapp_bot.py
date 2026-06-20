@@ -11,7 +11,10 @@ WebApp Bot — Max mini-app полный пример с двусторонне�
 
 ЭНДПОИНТЫ
 ──────────
+  GET  /               — общая landing-страница (HomePage), без auth, без JS не ломается
   GET  /health          — статус сервера (без auth)
+  GET  /app, /app/*     — Mini App фронтенд (HTML/JS) — это URL для Max bot dashboard,
+                           НЕ bare WEBAPP_URL
   GET  /api/me          — профиль пользователя из initData
   POST /api/auth        — валидация initData, возвращает user
   POST /api/contact     — запрос и валидация контакта
@@ -45,6 +48,10 @@ WebApp Bot — Max mini-app полный пример с двусторонне�
   export WEBAPP_ORIGIN=https://your-app.example.com
   export API_PORT=8080
   python examples/webapp_bot.py
+
+  В Max bot dashboard в качестве Mini App URL указать WEBAPP_URL + /app
+  (например https://your-app.example.com/app), а не сам WEBAPP_URL —
+  bare WEBAPP_URL отдаёт только общую HomePage.
 """
 
 import asyncio
@@ -65,7 +72,7 @@ from aioscam.webapp import (
     WebAppSignatureError,
     validate_contact,
 )
-from aioscam.webapp.aiohttp import WebAppMiddleware, cors_middleware
+from aioscam.webapp.aiohttp import HomePage, WebAppMiddleware, cors_middleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -77,6 +84,7 @@ WEBAPP_URL  = os.environ.get("WEBAPP_URL",    "https://your-app.example.com")
 WEBAPP_ORIGIN = os.environ.get("WEBAPP_ORIGIN", "*")
 API_PORT    = int(os.environ.get("API_PORT",   "8080"))
 MAX_BODY    = 64 * 1024  # 64 KB
+WEBAPP_PATH = "/app"  # register WEBAPP_URL + WEBAPP_PATH as the Mini App URL in the Max bot dashboard
 
 STATIC_DIR = Path(__file__).parent / "webapp"
 
@@ -406,7 +414,10 @@ def build_web_app() -> web.Application:
         client_max_size=MAX_BODY,
     )
 
-    # Public
+    # Public — generic landing page at the bare domain root. Doesn't hint that
+    # /api/* exists; works with no JS (plain "Open in Max" link).
+    home = HomePage(bot, description="Демо-бот AioScam: двусторонняя связь Bot↔WebApp через SSE.")
+    app.router.add_get("/", home.handler)
     app.router.add_get("/health", handle_health)
 
     # Protected — все проходят через WebAppMiddleware
@@ -416,16 +427,21 @@ def build_web_app() -> web.Application:
     app.router.add_post("/api/send",    handle_send)
     app.router.add_get ("/api/events",  handle_events)
 
-    # Static frontend
+    # Mini App frontend — served under WEBAPP_PATH, not the bare root, so a
+    # plain visitor of WEBAPP_URL never sees the interactive demo or its asset
+    # paths. Register WEBAPP_URL + WEBAPP_PATH (not bare WEBAPP_URL) as the
+    # Mini App URL in the Max bot dashboard — that's the URL opened by the
+    # OpenAppButton inside the Max client.
     if STATIC_DIR.is_dir():
         index_file = STATIC_DIR / "index.html"
 
         async def serve_index(request):
             return web.FileResponse(index_file)
 
-        app.router.add_get("/", serve_index)
-        app.router.add_static("/", path=str(STATIC_DIR), name="static", show_index=False)
-        logger.info(f"Serving static from {STATIC_DIR}")
+        app.router.add_get(WEBAPP_PATH, serve_index)
+        app.router.add_get(f"{WEBAPP_PATH}/", serve_index)
+        app.router.add_static(WEBAPP_PATH, path=str(STATIC_DIR), name="static", show_index=False)
+        logger.info(f"Serving Mini App frontend from {STATIC_DIR} at {WEBAPP_PATH}")
 
     return app
 

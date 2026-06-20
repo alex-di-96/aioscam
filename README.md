@@ -167,6 +167,17 @@ caps = await BotCapabilities.probe(bot, webapp_url="https://example.com/webapp")
 caps.log_report(logger)
 ```
 
+Serve the server's HTTP root with a generic landing page instead of a hand-written `index.html` —
+works with no JS (plain "Open in Max" link) and gives a scanner/plain visitor no hint that `/api/*`
+exists. Mount your actual Mini App frontend under its own path (e.g. `/app`) and register
+*that* path in the Max bot dashboard, not the bare root:
+
+```python
+from aioscam.webapp.aiohttp import HomePage
+
+app.router.add_get("/", HomePage(bot).handler)
+```
+
 Full working example with a REST+SSE backend and 4 frontend pages (native Bridge SDK reference,
 Vue 3, Chart.js, sortable table): `examples/webapp_bot.py` + `examples/webapp/*.html`.
 

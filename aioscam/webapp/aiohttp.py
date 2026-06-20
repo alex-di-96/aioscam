@@ -36,6 +36,15 @@ CORS:
             cors_middleware(allow_origins=["https://my-app.vercel.app"]),
             WebAppMiddleware(bot_token=BOT_TOKEN),
         ])
+
+Landing page:
+    Use :class:`HomePage` to serve the bot's HTTP root with a generic,
+    framework-provided page instead of a hand-written ``index.html`` or a
+    raw ``/api/*`` response — it works without JS (plain "Open in Max"
+    link) and doesn't expose any sign of the API surface to a plain
+    visitor or scanner::
+
+        app.router.add_get("/", HomePage(bot).handler)
 """
 
 import logging
@@ -43,7 +52,16 @@ from typing import Iterable, Optional
 
 from aiohttp import web
 
+from aioscam.webapp.homepage import HomePage
 from aioscam.webapp.init_data import WebAppDataError, WebAppInitData, validate_init_data
+
+__all__ = [
+    "cors_middleware",
+    "get_init_data",
+    "WebAppMiddleware",
+    "webapp_auth_middleware",
+    "HomePage",
+]
 
 logger = logging.getLogger(__name__)
 

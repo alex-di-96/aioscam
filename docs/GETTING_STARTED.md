@@ -331,12 +331,22 @@ async def api_events(request):
 app = web.Application(middlewares=[WebAppMiddleware(bot_token=bot.token)])
 app.router.add_post("/api/send", api_send)
 app.router.add_get("/api/events", api_events)
-app.router.add_static("/", path="examples/webapp/")
+app.router.add_static("/app", path="examples/webapp/")
 ```
 
 `WebAppMiddleware` only validates paths starting with `/api` — static HTML/JS pages stay public.
-A full example (REST+SSE backend, 4 frontend pages) is in `examples/webapp_bot.py` +
-`examples/webapp/*.html`.
+Register `/app` (not the bare server root) as the Mini App URL in the Max bot dashboard; serve the
+bare root with `HomePage` instead so a plain visitor/scanner sees a normal-looking landing page
+with no hint that `/api/*` exists:
+
+```python
+from aioscam.webapp.aiohttp import HomePage
+
+app.router.add_get("/", HomePage(bot).handler)
+```
+
+A full example (REST+SSE backend, 4 frontend pages, `HomePage` wired up) is in
+`examples/webapp_bot.py` + `examples/webapp/*.html`.
 
 ## Bot Capability Report
 

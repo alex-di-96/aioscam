@@ -570,6 +570,26 @@ app.middlewares.append(WebAppMiddleware(bot_token=bot.token))
 Middleware валидирует только запросы с путём, начинающимся на `/api`; всё остальное (включая
 `/static/*` и HTML-страницы) остаётся без проверки и доступно публично.
 
+### Главная страница
+
+`WebAppMiddleware` отвечает одинаковым 401 и на отсутствующий, и на неверный `initData` — значит
+обычный перебор путей узнаёт, что `/api/me`, `/api/auth` и т.д. существуют просто по факту запроса.
+`HomePage` даёт корню сервера безопасный контент вместо хардкод `index.html`: имя/описание бота
+(из `bot.get_me()`) и кнопку "Open in Max" — без JS, без намёка на `/api/*`. Реальный фронтенд
+мини-приложения монтируйте под отдельным путём и именно его регистрируйте как Mini App URL в
+Max bot dashboard — не голый корень:
+
+```python
+from aioscam.webapp.aiohttp import HomePage
+
+app.router.add_get("/", HomePage(bot).handler)              # публичная landing-страница
+app.router.add_get("/app", serve_index)                     # Mini App URL из dashboard
+app.router.add_static("/app", path=str(STATIC_DIR))
+```
+
+`HomePage(bot, title=..., description=..., extra_head=..., extra_body=...)` позволяет переопределить
+текст или добавить свою разметку/скрипты поверх дефолтного каркаса — см. `examples/webapp_bot.py`.
+
 Полный рабочий пример — REST-эндпоинты (`/api/auth`, `/api/contact`, `/api/send`), SSE-эндпоинт
 и 4 фронтенд-страницы — в `examples/webapp_bot.py` + `examples/webapp/*.html`.
 
