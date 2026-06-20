@@ -178,6 +178,20 @@ from aioscam.webapp.aiohttp import HomePage
 app.router.add_get("/", HomePage(bot).handler)
 ```
 
+`WebAppMiddleware` already returns 404 (not 401) when a request carries no `initData` at all, so
+blind probing of `/api/*` paths looks identical to a route that doesn't exist — only requests with
+a (wrong) signature get a 401. For stronger masking, move the API off the well-known `/api` prefix
+and add a `WebAppFailGuard` to flat-404 repeat offenders instead of letting them keep guessing:
+
+```python
+from aioscam.webapp.aiohttp import WebAppFailGuard, WebAppMiddleware
+
+guard = WebAppFailGuard(max_failures=20, window=60, ban_seconds=300)
+app.middlewares.append(
+    WebAppMiddleware(bot_token=bot.token, api_prefix="/a8f3e1", fail_guard=guard)
+)
+```
+
 Full working example with a REST+SSE backend and 4 frontend pages (native Bridge SDK reference,
 Vue 3, Chart.js, sortable table): `examples/webapp_bot.py` + `examples/webapp/*.html`.
 

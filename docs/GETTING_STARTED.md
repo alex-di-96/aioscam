@@ -335,7 +335,9 @@ app.router.add_static("/app", path="examples/webapp/")
 ```
 
 `WebAppMiddleware` only validates paths starting with `/api` — static HTML/JS pages stay public.
-Register `/app` (not the bare server root) as the Mini App URL in the Max bot dashboard; serve the
+It also answers a missing `initData` with 404 (looks like the route doesn't exist) and an
+invalid one with 401, so blind path scanning can't tell a real endpoint from a 404. Register
+`/app` (not the bare server root) as the Mini App URL in the Max bot dashboard; serve the
 bare root with `HomePage` instead so a plain visitor/scanner sees a normal-looking landing page
 with no hint that `/api/*` exists:
 
@@ -343,6 +345,18 @@ with no hint that `/api/*` exists:
 from aioscam.webapp.aiohttp import HomePage
 
 app.router.add_get("/", HomePage(bot).handler)
+```
+
+For stronger masking against wordlist scanners, move the API off `/api` and add a fail-counter
+that 404s out repeat offenders:
+
+```python
+from aioscam.webapp.aiohttp import WebAppFailGuard, WebAppMiddleware
+
+guard = WebAppFailGuard(max_failures=20, window=60, ban_seconds=300)
+app = web.Application(middlewares=[
+    WebAppMiddleware(bot_token=bot.token, api_prefix="/a8f3e1", fail_guard=guard),
+])
 ```
 
 A full example (REST+SSE backend, 4 frontend pages, `HomePage` wired up) is in

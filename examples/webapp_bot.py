@@ -40,6 +40,10 @@ WebApp Bot — Max mini-app полный пример с двусторонне�
   • Контакт валидируется отдельным HMAC с user_id из initData
   • CORS ограничен WEBAPP_ORIGIN
   • Лимит тела запроса: 64 KB
+  • Отсутствующий initData → 404 (как несуществующий роут), неверный → 401 —
+    слепой перебор путей не отличает существующий /api/* от 404
+  • WebAppFailGuard: после повторных неудачных попыток с одного адреса —
+    плоский 404 без проверки подписи на ban_seconds
 
 ЗАПУСК
 ──────
@@ -72,7 +76,7 @@ from aioscam.webapp import (
     WebAppSignatureError,
     validate_contact,
 )
-from aioscam.webapp.aiohttp import HomePage, WebAppMiddleware, cors_middleware
+from aioscam.webapp.aiohttp import HomePage, WebAppFailGuard, WebAppMiddleware, cors_middleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -91,6 +95,7 @@ STATIC_DIR = Path(__file__).parent / "webapp"
 # ── SSE manager (singleton) ────────────────────────────────────────────────────
 
 sse = EventStreamManager()
+fail_guard = WebAppFailGuard(max_failures=20, window=60.0, ban_seconds=300.0)
 
 # ── Bot setup ──────────────────────────────────────────────────────────────────
 
@@ -409,7 +414,7 @@ def build_web_app() -> web.Application:
             body_limit_middleware,
             auth_log_middleware,
             cors_middleware(allow_origins=[WEBAPP_ORIGIN]),
-            WebAppMiddleware(bot_token=BOT_TOKEN, max_age=3600),
+            WebAppMiddleware(bot_token=BOT_TOKEN, max_age=3600, fail_guard=fail_guard),
         ],
         client_max_size=MAX_BODY,
     )

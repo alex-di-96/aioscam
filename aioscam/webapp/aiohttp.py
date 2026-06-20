@@ -45,6 +45,18 @@ Landing page:
     visitor or scanner::
 
         app.router.add_get("/", HomePage(bot).handler)
+
+Hiding /api/* from scanners:
+    ``WebAppMiddleware`` already returns 404 (not 401) when a request has
+    no initData attempt at all, so blind probing of ``/api/*`` paths looks
+    identical to a route that doesn't exist. For stronger masking, move the
+    API off the well-known ``/api`` prefix and add a :class:`WebAppFailGuard`
+    to 404 out repeat offenders::
+
+        guard = WebAppFailGuard(max_failures=20, window=60, ban_seconds=300)
+        app = web.Application(middlewares=[
+            WebAppMiddleware(bot_token=BOT_TOKEN, api_prefix="/a8f3e1", fail_guard=guard),
+        ])
 """
 
 import logging
@@ -52,6 +64,7 @@ from typing import Iterable, Optional
 
 from aiohttp import web
 
+from aioscam.webapp.failguard import WebAppFailGuard
 from aioscam.webapp.homepage import HomePage
 from aioscam.webapp.init_data import WebAppDataError, WebAppInitData, validate_init_data
 
@@ -61,6 +74,7 @@ __all__ = [
     "WebAppMiddleware",
     "webapp_auth_middleware",
     "HomePage",
+    "WebAppFailGuard",
 ]
 
 logger = logging.getLogger(__name__)
@@ -147,7 +161,12 @@ async def get_init_data(
         Validated :class:`WebAppInitData`
 
     Raises:
-        WebAppDataError: If initData is missing, invalid, or expired
+        WebAppDataError: If initData is missing (bare ``WebAppDataError``,
+            no subclass — callers can use this to tell "nothing was sent"
+            apart from "something was sent but invalid")
+        WebAppSignatureError, WebAppExpiredError, WebAppMissingFieldError,
+        WebAppParseError: If initData was present but failed validation
+            (all subclasses of ``WebAppDataError``)
     """
     raw: Optional[str] = _extract_raw(request)
 
@@ -182,14 +201,35 @@ def _extract_raw(request: web.Request) -> Optional[str]:
     return None
 
 
-def WebAppMiddleware(bot_token: str, max_age: int = 86400):
+def WebAppMiddleware(
+    bot_token: str,
+    max_age: int = 86400,
+    api_prefix: str = "/api",
+    fail_guard: Optional[WebAppFailGuard] = None,
+):
     """
     Configurable aiohttp middleware factory for Max WebApp auth.
 
-    Validates initData on ``/api/*`` requests and attaches
-    :class:`WebAppInitData` to ``request["webapp_init_data"]``.
-    Returns HTTP 401 on failure. Skips OPTIONS and any path that does
-    not start with ``/api``.
+    Validates initData on ``{api_prefix}/*`` requests and attaches
+    :class:`WebAppInitData` to ``request["webapp_init_data"]``. Skips
+    OPTIONS and any path that does not start with ``api_prefix``.
+
+    Response codes are deliberately split so blind scanning can't tell
+    "no route here" from "route exists, auth rejected":
+        - 404 — no initData was sent at all (looks like a 404 for any path)
+        - 401 — initData was sent but failed validation (bad signature,
+          expired, malformed)
+
+    Args:
+        bot_token: Bot token used to verify the initData signature.
+        max_age: Maximum allowed initData age in seconds. Pass 0 to skip.
+        api_prefix: Path prefix to protect. Defaults to ``/api``; set it to
+            an unguessable value (e.g. ``secrets.token_hex(8)``) to keep the
+            API surface off wordlist-based scanners. Your frontend's fetch
+            calls must then target the same prefix.
+        fail_guard: Optional :class:`WebAppFailGuard` — when given, addresses
+            that repeatedly fail auth get a flat 404 (no validation attempt)
+            until their ban expires.
 
     Usage::
 
@@ -200,12 +240,19 @@ def WebAppMiddleware(bot_token: str, max_age: int = 86400):
 
     @web.middleware
     async def _middleware(request: web.Request, handler):
-        if request.method == "OPTIONS" or not request.path.startswith("/api"):
+        if request.method == "OPTIONS" or not request.path.startswith(api_prefix):
             return await handler(request)
+
+        if fail_guard is not None and fail_guard.is_banned(request.remote or ""):
+            return web.json_response({"ok": False, "error": "Not Found"}, status=404)
 
         try:
             init_data = await get_init_data(request, bot_token, max_age)
         except WebAppDataError as exc:
+            if fail_guard is not None:
+                fail_guard.record_failure(request.remote or "")
+            if type(exc) is WebAppDataError:
+                return web.json_response({"ok": False, "error": "Not Found"}, status=404)
             return web.json_response({"ok": False, "error": str(exc)}, status=401)
 
         request["webapp_init_data"] = init_data
@@ -233,6 +280,8 @@ async def webapp_auth_middleware(request: web.Request, handler):
     try:
         init_data = await get_init_data(request, bot_token)
     except WebAppDataError as exc:
+        if type(exc) is WebAppDataError:
+            return web.json_response({"ok": False, "error": "Not Found"}, status=404)
         return web.json_response({"ok": False, "error": str(exc)}, status=401)
 
     request["webapp_init_data"] = init_data

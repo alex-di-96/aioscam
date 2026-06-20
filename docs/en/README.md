@@ -398,12 +398,14 @@ app.middlewares.append(WebAppMiddleware(bot_token=bot.token))
 ```
 
 The middleware only validates requests whose path starts with `/api`; everything else (including
-`/static/*` and your HTML pages) is left untouched and stays publicly reachable.
+`/static/*` and your HTML pages) is left untouched and stays publicly reachable. It also splits its
+error responses on purpose: a request with no `initData` at all gets a plain 404 (indistinguishable
+from a route that doesn't exist), while a request with a present-but-invalid `initData` (bad
+signature, expired, malformed) gets 401. A blind path scanner that never sends `initData` can't
+tell `/api/me` apart from a 404 on a path that was never registered.
 
 ### Landing page
 
-`WebAppMiddleware` answers a missing or an invalid `initData` with the same structured 401 — which
-means a plain path scanner learns that `/api/me`, `/api/auth`, etc. exist just by hitting them.
 `HomePage` gives the bare server root something safe to show instead of a hand-written `index.html`:
 bot name/description (from `bot.get_me()`) and an "Open in Max" deep link, no JS required, nothing
 that hints at `/api/*`. Mount your actual Mini App frontend under its own path and register *that*
@@ -419,6 +421,27 @@ app.router.add_static("/app", path=str(STATIC_DIR))
 
 `HomePage(bot, title=..., description=..., extra_head=..., extra_body=...)` lets you override the
 copy or inject your own markup/scripts on top of the default shell — see `examples/webapp_bot.py`.
+
+### Masking `/api/*` from scanners
+
+The 404/401 split above already hides whether a route exists from anyone who never sends
+`initData`. To raise the bar further against wordlist-style scanners (which try common names like
+`/api`, `/api/me`, `/api/auth`), move the API off the well-known `/api` prefix with `api_prefix`,
+and add a `WebAppFailGuard` to stop responding altogether to addresses that keep failing auth:
+
+```python
+from aioscam.webapp.aiohttp import WebAppFailGuard, WebAppMiddleware
+
+guard = WebAppFailGuard(max_failures=20, window=60, ban_seconds=300)
+app.middlewares.append(
+    WebAppMiddleware(bot_token=bot.token, api_prefix="/a8f3e1", fail_guard=guard)
+)
+```
+
+Once an address crosses `max_failures` failed validations within `window` seconds, every request
+from it gets a flat 404 for `ban_seconds` — no signature check is even attempted. This is a
+defense-in-depth speed bump for automated probing, not a substitute for the HMAC check itself.
+Remember that your frontend's `fetch`/`EventSource` calls must target the same `api_prefix`.
 
 A full working example — REST endpoints (`/api/auth`, `/api/contact`, `/api/send`), the SSE
 endpoint, and 4 frontend pages — lives in `examples/webapp_bot.py` + `examples/webapp/*.html`.

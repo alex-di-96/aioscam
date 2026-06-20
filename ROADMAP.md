@@ -27,6 +27,27 @@
   у Max нет — без выполнения JS сервер не может получить подписанные данные вообще
 - Тесты: `tests/test_webapp_homepage.py` (11 тестов, 615/615 всего)
 
+### `WebAppMiddleware` — 404/401 split, `api_prefix`, `WebAppFailGuard` (`aioscam/webapp/aiohttp.py`, `aioscam/webapp/failguard.py`)
+
+Мотивация: после `HomePage` оставалось два открытых пункта маскировки `/api/*` от прямого
+исследования — (1) `WebAppMiddleware` отвечал одинаковым 401 и на отсутствующий, и на неверный
+`initData`, и (2) путь `/api` сам по себе — из стандартного wordlist'а сканеров. Сделано как
+фреймворк-фичи (конфигурируемые параметры/класс), не костыль под пример.
+
+- `WebAppMiddleware`/`webapp_auth_middleware` теперь различают: bare `WebAppDataError`
+  (`initData` вообще не пришло — `get_init_data()` поднимает именно базовый класс, не подкласс)
+  → 404 "как будто роута нет"; любой подкласс (`WebAppSignatureError`, `WebAppExpiredError`,
+  `WebAppMissingFieldError`, `WebAppParseError` — реальная попытка с неверными данными) → 401
+- `WebAppMiddleware(bot_token, max_age=86400, api_prefix="/api", fail_guard=None)` — `api_prefix`
+  параметризован вместо хардкода `/api`, можно мигрировать API на непредсказуемый путь
+  (`secrets.token_hex(8)`); фронтенд должен слать запросы на тот же префикс
+- `WebAppFailGuard(max_failures=20, window=60.0, ban_seconds=300.0)` — новый класс
+  (`aioscam/webapp/failguard.py`, реэкспорт из `aioscam.webapp.aiohttp`), in-memory sliding-window
+  счётчик неудачных попыток по `request.remote`; при превышении порога адрес получает плоский 404
+  без попытки валидации до истечения `ban_seconds` — доп. рубеж защиты, не замена HMAC-проверки
+- Тесты: `tests/test_webapp_failguard.py` (6), `tests/test_webapp_middleware.py` (12) — ранее
+  `WebAppMiddleware`/`webapp_auth_middleware` не имели тестов вообще; итого 633/633
+
 ---
 
 ## v0.2.0 — Current (2026-06-19)
