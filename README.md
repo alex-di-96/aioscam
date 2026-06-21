@@ -193,7 +193,9 @@ app.middlewares.append(
 ```
 
 Full working example with a REST+SSE backend and 4 frontend pages (native Bridge SDK reference,
-Vue 3, Chart.js, sortable table): `examples/webapp_bot.py` + `examples/webapp/*.html`.
+Vue 3, Chart.js, sortable table): `examples/webapp_bot.py` + `examples/webapp/*.html` — run it with
+`WEBAPP_API_PREFIX=/your-secret` to see `api_prefix` move the whole API and have the frontend pick
+it up automatically (the server rewrites `const API_PREFIX = "/api";` in each served page).
 
 ## Rate Limiter
 

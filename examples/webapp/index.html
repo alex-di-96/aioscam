@@ -533,6 +533,7 @@
 <script>
 const bridge = new MaxBridge();
 const API_BASE = ""; // same-origin; or set to "https://your-bot.example.com"
+const API_PREFIX = "/api"; // injected by the server at request time — see webapp_bot.py
 
 // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -598,7 +599,7 @@ function connectSSE() {
     return;
   }
   // EventSource не поддерживает заголовки → передаём initData через query
-  const url = API_BASE + "/api/events?initData=" + encodeURIComponent(initData);
+  const url = API_BASE + API_PREFIX + "/events?initData=" + encodeURIComponent(initData);
   _es = new EventSource(url);
 
   _es.addEventListener("connected", (e) => {
@@ -663,7 +664,7 @@ async function doSend() {
 
   input.disabled = true;
   try {
-    const resp = await fetch(API_BASE + "/api/send", {
+    const resp = await fetch(API_BASE + API_PREFIX + "/send", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -689,7 +690,7 @@ async function doSend() {
 async function doLoadMe() {
   const el = document.getElementById("me-result");
   try {
-    const resp = await fetch(API_BASE + "/api/me", {
+    const resp = await fetch(API_BASE + API_PREFIX + "/me", {
       headers: { "Authorization": `MaxWebApp ${bridge.initData}` },
     });
     const data = await resp.json();
@@ -705,7 +706,7 @@ async function doLoadMe() {
 async function doAuth() {
   const el = document.getElementById("auth-result");
   try {
-    const data = await bridge.authenticate(API_BASE + "/api/auth");
+    const data = await bridge.authenticate(API_BASE + API_PREFIX + "/auth");
     show(el, JSON.stringify(data, null, 2), "ok");
   } catch (e) {
     show(el, "Ошибка: " + e.message, "err");
@@ -719,7 +720,7 @@ async function doRequestContact() {
   try {
     const contact = await bridge.requestContact();
     // Send to server for server-side hash validation
-    const resp = await fetch(API_BASE + "/api/contact", {
+    const resp = await fetch(API_BASE + API_PREFIX + "/contact", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

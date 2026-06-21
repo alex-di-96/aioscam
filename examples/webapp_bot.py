@@ -15,11 +15,16 @@ WebApp Bot — Max mini-app полный пример с двусторонне�
   GET  /health          — статус сервера (без auth)
   GET  /app, /app/*     — Mini App фронтенд (HTML/JS) — это URL для Max bot dashboard,
                            НЕ bare WEBAPP_URL
-  GET  /api/me          — профиль пользователя из initData
-  POST /api/auth        — валидация initData, возвращает user
-  POST /api/contact     — запрос и валидация контакта
-  POST /api/send        — WebApp отправляет сообщение через бота
-  GET  /api/events      — SSE поток: bot→WebApp push-уведомления
+  GET  {API_PREFIX}/me          — профиль пользователя из initData
+  POST {API_PREFIX}/auth        — валидация initData, возвращает user
+  POST {API_PREFIX}/contact     — запрос и валидация контакта
+  POST {API_PREFIX}/send        — WebApp отправляет сообщение через бота
+  GET  {API_PREFIX}/events      — SSE поток: bot→WebApp push-уведомления
+
+  {API_PREFIX} = "/api" по умолчанию, переопределяется WEBAPP_API_PREFIX (см. ЗАПУСК).
+  Фронтенд (index.html, index-vue.html, charts.html, table.html) узнаёт реальный
+  префикс через подстановку `const API_PREFIX = "/api";` на сервере при отдаче
+  страницы — см. build_web_app().
 
 КОМАНДЫ БОТА
 ────────────
@@ -51,6 +56,7 @@ WebApp Bot — Max mini-app полный пример с двусторонне�
   export WEBAPP_URL=https://your-app.example.com
   export WEBAPP_ORIGIN=https://your-app.example.com
   export API_PORT=8080
+  export WEBAPP_API_PREFIX=/api          # optional — move off /api for stronger masking
   python examples/webapp_bot.py
 
   В Max bot dashboard в качестве Mini App URL указать WEBAPP_URL + /app
@@ -87,6 +93,7 @@ BOT_TOKEN   = os.environ.get("MAX_BOT_TOKEN", "")
 WEBAPP_URL  = os.environ.get("WEBAPP_URL",    "https://your-app.example.com")
 WEBAPP_ORIGIN = os.environ.get("WEBAPP_ORIGIN", "*")
 API_PORT    = int(os.environ.get("API_PORT",   "8080"))
+API_PREFIX  = os.environ.get("WEBAPP_API_PREFIX", "/api")  # move off /api for stronger masking
 MAX_BODY    = 64 * 1024  # 64 KB
 WEBAPP_PATH = "/app"  # register WEBAPP_URL + WEBAPP_PATH as the Mini App URL in the Max bot dashboard
 
@@ -400,7 +407,7 @@ async def body_limit_middleware(request: web.Request, handler):
 async def auth_log_middleware(request: web.Request, handler):
     """Log failed auth attempts."""
     response = await handler(request)
-    if response.status == 401 and request.path.startswith("/api"):
+    if response.status == 401 and request.path.startswith(API_PREFIX):
         logger.warning(
             f"Auth failed: {request.method} {request.path} "
             f"from {request.headers.get('X-Real-IP', request.remote)}"
@@ -414,39 +421,57 @@ def build_web_app() -> web.Application:
             body_limit_middleware,
             auth_log_middleware,
             cors_middleware(allow_origins=[WEBAPP_ORIGIN]),
-            WebAppMiddleware(bot_token=BOT_TOKEN, max_age=3600, fail_guard=fail_guard),
+            WebAppMiddleware(bot_token=BOT_TOKEN, max_age=3600, api_prefix=API_PREFIX, fail_guard=fail_guard),
         ],
         client_max_size=MAX_BODY,
     )
 
     # Public — generic landing page at the bare domain root. Doesn't hint that
-    # /api/* exists; works with no JS (plain "Open in Max" link).
+    # API_PREFIX/* exists; works with no JS (plain "Open in Max" link).
     home = HomePage(bot, description="Демо-бот AioScam: двусторонняя связь Bot↔WebApp через SSE.")
     app.router.add_get("/", home.handler)
     app.router.add_get("/health", handle_health)
 
     # Protected — все проходят через WebAppMiddleware
-    app.router.add_get ("/api/me",      handle_me)
-    app.router.add_post("/api/auth",    handle_auth)
-    app.router.add_post("/api/contact", handle_contact)
-    app.router.add_post("/api/send",    handle_send)
-    app.router.add_get ("/api/events",  handle_events)
+    app.router.add_get (f"{API_PREFIX}/me",      handle_me)
+    app.router.add_post(f"{API_PREFIX}/auth",    handle_auth)
+    app.router.add_post(f"{API_PREFIX}/contact", handle_contact)
+    app.router.add_post(f"{API_PREFIX}/send",    handle_send)
+    app.router.add_get (f"{API_PREFIX}/events",  handle_events)
 
     # Mini App frontend — served under WEBAPP_PATH, not the bare root, so a
     # plain visitor of WEBAPP_URL never sees the interactive demo or its asset
     # paths. Register WEBAPP_URL + WEBAPP_PATH (not bare WEBAPP_URL) as the
     # Mini App URL in the Max bot dashboard — that's the URL opened by the
     # OpenAppButton inside the Max client.
+    #
+    # The frontend pages hardcode `const API_PREFIX = "/api";` as a readable
+    # default; when WEBAPP_API_PREFIX moves the API elsewhere, that line is
+    # rewritten on the fly so the demo keeps working without a build step.
     if STATIC_DIR.is_dir():
-        index_file = STATIC_DIR / "index.html"
+        templated_pages = {"index.html", "index-vue.html", "charts.html", "table.html"}
+        placeholder = 'const API_PREFIX = "/api";'
+        replacement = f'const API_PREFIX = {API_PREFIX!r};'
 
-        async def serve_index(request):
-            return web.FileResponse(index_file)
+        def render_page(filename: str) -> str:
+            text = (STATIC_DIR / filename).read_text(encoding="utf-8")
+            return text.replace(placeholder, replacement)
 
-        app.router.add_get(WEBAPP_PATH, serve_index)
-        app.router.add_get(f"{WEBAPP_PATH}/", serve_index)
+        def make_page_handler(filename: str):
+            async def _handler(request):
+                return web.Response(text=render_page(filename), content_type="text/html")
+            return _handler
+
+        for filename in templated_pages:
+            app.router.add_get(f"{WEBAPP_PATH}/{filename}", make_page_handler(filename))
+
+        index_handler = make_page_handler("index.html")
+        app.router.add_get(WEBAPP_PATH, index_handler)
+        app.router.add_get(f"{WEBAPP_PATH}/", index_handler)
+
+        # Fallback for non-templated assets (max-bridge.js, etc).
         app.router.add_static(WEBAPP_PATH, path=str(STATIC_DIR), name="static", show_index=False)
-        logger.info(f"Serving Mini App frontend from {STATIC_DIR} at {WEBAPP_PATH}")
+        logger.info(f"Serving Mini App frontend from {STATIC_DIR} at {WEBAPP_PATH} (api_prefix={API_PREFIX})")
 
     return app
 

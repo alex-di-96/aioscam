@@ -232,6 +232,7 @@ createApp({
   setup() {
     const bridge = new MaxBridge();
     const API  = "";  // same-origin
+    const API_PREFIX = "/api"; // injected by the server at request time — see webapp_bot.py
 
     // ── User info ─────────────────────────────────────────────────────────
     const user = computed(() => bridge.user);
@@ -265,7 +266,7 @@ createApp({
 
     function connectSSE() {
       if (!bridge.initData) { sseLabel.value = "initData недоступен"; return; }
-      const url = API + "/api/events?initData=" + encodeURIComponent(bridge.initData);
+      const url = API + API_PREFIX + "/events?initData=" + encodeURIComponent(bridge.initData);
       _es = new EventSource(url);
       _es.addEventListener("connected", (e) => {
         sseOn.value = true; sseLabel.value = "Подключено";
@@ -294,7 +295,7 @@ createApp({
       if (!text || sending.value) return;
       sending.value = true; sendRes.value = null;
       try {
-        const r = await fetch(API + "/api/send", {
+        const r = await fetch(API + API_PREFIX + "/send", {
           method: "POST",
           headers: { "Content-Type":"application/json", "Authorization":`MaxWebApp ${bridge.initData}` },
           body: JSON.stringify({ text }),
@@ -315,7 +316,7 @@ createApp({
     async function doAuth() {
       profileRes.value = null;
       try {
-        const r = await fetch(API + "/api/auth", {
+        const r = await fetch(API + API_PREFIX + "/auth", {
           method: "POST",
           headers: { "Authorization": `MaxWebApp ${bridge.initData}` },
         });
@@ -328,7 +329,7 @@ createApp({
     async function doMe() {
       profileRes.value = null;
       try {
-        const r = await fetch(API + "/api/me", {
+        const r = await fetch(API + API_PREFIX + "/me", {
           headers: { "Authorization": `MaxWebApp ${bridge.initData}` },
         });
         const d = await r.json();
@@ -348,7 +349,7 @@ createApp({
       contactRes.value = null;
       try {
         const contact = await bridge.requestContact();
-        const r = await fetch(API + "/api/contact", {
+        const r = await fetch(API + API_PREFIX + "/contact", {
           method: "POST",
           headers: { "Content-Type":"application/json", "Authorization":`MaxWebApp ${bridge.initData}` },
           body: JSON.stringify(contact),

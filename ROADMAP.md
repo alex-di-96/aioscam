@@ -47,6 +47,12 @@
   без попытки валидации до истечения `ban_seconds` — доп. рубеж защиты, не замена HMAC-проверки
 - Тесты: `tests/test_webapp_failguard.py` (6), `tests/test_webapp_middleware.py` (12) — ранее
   `WebAppMiddleware`/`webapp_auth_middleware` не имели тестов вообще; итого 633/633
+- `examples/webapp_bot.py` доводит `api_prefix` до реальной демонстрации, не только до README:
+  `WEBAPP_API_PREFIX` (env, default `/api`) уезжает во все 5 роутов и в `WebAppMiddleware`; сервер
+  на лету подменяет `const API_PREFIX = "/api";` в каждой из 4 отдаваемых HTML-страниц
+  (`index.html`, `index-vue.html`, `charts.html`, `table.html`), так что фронтенд не дублирует
+  префикс вручную и не требует шага сборки. Проверено вручную через `aiohttp.test_utils` с обоими
+  значениями префикса (дефолт и кастомный) — см. [[feedback_no_loose_ends_before_publish]]
 
 ---
 

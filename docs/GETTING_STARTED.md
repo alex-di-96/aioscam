@@ -360,7 +360,9 @@ app = web.Application(middlewares=[
 ```
 
 A full example (REST+SSE backend, 4 frontend pages, `HomePage` wired up) is in
-`examples/webapp_bot.py` + `examples/webapp/*.html`.
+`examples/webapp_bot.py` + `examples/webapp/*.html`. It also demonstrates `api_prefix` end to end:
+set `WEBAPP_API_PREFIX=/your-secret` and the server rewrites `const API_PREFIX = "/api";` in each
+served page on the fly, so the frontend picks up the real prefix without a build step.
 
 ## Bot Capability Report
 

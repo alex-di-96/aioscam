@@ -441,10 +441,14 @@ app.middlewares.append(
 Once an address crosses `max_failures` failed validations within `window` seconds, every request
 from it gets a flat 404 for `ban_seconds` — no signature check is even attempted. This is a
 defense-in-depth speed bump for automated probing, not a substitute for the HMAC check itself.
-Remember that your frontend's `fetch`/`EventSource` calls must target the same `api_prefix`.
+Remember that your frontend's `fetch`/`EventSource` calls must target the same `api_prefix` — see
+how `examples/webapp_bot.py` does it below.
 
 A full working example — REST endpoints (`/api/auth`, `/api/contact`, `/api/send`), the SSE
 endpoint, and 4 frontend pages — lives in `examples/webapp_bot.py` + `examples/webapp/*.html`.
+Set `WEBAPP_API_PREFIX=/your-secret` before launching it and the demo moves its whole API there:
+the server rewrites the `const API_PREFIX = "/api";` line in each served page on the fly, so the
+frontend picks up the real prefix without a build step or any hardcoded duplicate.
 
 ---
 
