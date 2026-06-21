@@ -1,6 +1,6 @@
 # AioScam — Документация (RU)
 
-**v0.2.0** | [English](../en/README.md)
+**v0.2.1** | [English](../en/README.md)
 
 ## Оглавление
 

@@ -4,7 +4,19 @@ Async Python framework for building Max messenger bots, inspired by aiogram arch
 
 ## Version
 
-**v0.2.0** — Latest (2026-06-19)
+**v0.2.1** — Latest (2026-06-21)
+
+### What's new in v0.2.1
+- ✅ **`HomePage`** — generic landing page for the server root, so a plain visitor/scanner sees a
+  normal-looking page with no hint that `/api/*` exists; mount the real Mini App frontend under
+  its own path instead
+- ✅ **`WebAppMiddleware` 404/401 split** — a request with no `initData` at all now gets a plain 404
+  (looks like the route doesn't exist); only a present-but-wrong signature gets 401
+- ✅ **`api_prefix`** — move the API off the well-known `/api` path; `examples/webapp_bot.py` wires
+  it through `WEBAPP_API_PREFIX` end to end, including server-side template rewriting for all 4
+  frontend pages
+- ✅ **`WebAppFailGuard`** — in-memory sliding-window per-IP ban for repeat failed-auth probing
+- ✅ **633/633 tests passing**
 
 ### What's new in v0.2.0
 - ✅ **`aioscam.webapp`** — server-side module for Max WebApps (mini apps): `validate_init_data()` /
@@ -257,7 +269,7 @@ AIOSCAM_ENV=prod   # debug | test | prod
 python -m pytest tests/ -v
 ```
 
-**604/604 tests passing (100%)**
+**633/633 tests passing (100%)**
 
 ## Example Bots
 

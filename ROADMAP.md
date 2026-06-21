@@ -1,6 +1,6 @@
 # AioScam Roadmap
 
-## Unreleased
+## v0.2.1 — Current (2026-06-21)
 
 ### `HomePage` — generic landing page for WebApp servers (`aioscam/webapp/homepage.py`)
 
@@ -56,7 +56,7 @@
 
 ---
 
-## v0.2.0 — Current (2026-06-19)
+## v0.2.0 — (2026-06-19)
 
 ### `aioscam.webapp` — серверный модуль для Max WebApps (мини-приложений)
 
