@@ -19,6 +19,7 @@ WebApp Bot — Max mini-app полный пример с двусторонне�
   POST {API_PREFIX}/auth        — валидация initData, возвращает user
   POST {API_PREFIX}/contact     — запрос и валидация контакта
   POST {API_PREFIX}/send        — WebApp отправляет сообщение через бота
+  POST {API_PREFIX}/command     — WebApp вызывает команду бота (/start и т.д.) кнопкой
   GET  {API_PREFIX}/events      — SSE поток: bot→WebApp push-уведомления
 
   {API_PREFIX} = "/api" по умолчанию, переопределяется WEBAPP_API_PREFIX (см. ЗАПУСК).
@@ -96,6 +97,7 @@ API_PORT    = int(os.environ.get("API_PORT",   "8080"))
 API_PREFIX  = os.environ.get("WEBAPP_API_PREFIX", "/api")  # move off /api for stronger masking
 MAX_BODY    = 64 * 1024  # 64 KB
 WEBAPP_PATH = "/app"  # register WEBAPP_URL + WEBAPP_PATH as the Mini App URL in the Max bot dashboard
+DOCS_URL    = "https://aioscam.readthedocs.io"
 
 STATIC_DIR = Path(__file__).parent / "webapp"
 
@@ -111,20 +113,24 @@ dp  = Dispatcher()
 router = Router()
 
 
-@router.message_created(Command("start"))
-async def cmd_start(event):
-    await event.answer(
-        "👋 Привет! Я демо-бот AioScam WebApp.\n\n"
-        "Команды:\n"
-        "/webapp — открыть мини-приложение\n"
-        "/echo <текст> — эхо + push в WebApp\n"
-        "/status — активные WebApp-сессии"
-    )
+# ── Команды бота — общие payload-функции ─────────────────────────────────────
+# Используются и обработчиками чата (/start и т.д.), и POST /api/command —
+# нажатие кнопки в WebApp выполняет ту же логику, что и команда из чата.
+
+async def _start_payload():
+    return {
+        "text": (
+            "👋 Привет! Я демо-бот AioScam WebApp.\n\n"
+            "Команды:\n"
+            "/webapp — открыть мини-приложение\n"
+            "/echo <текст> — эхо + push в WebApp\n"
+            "/status — активные WebApp-сессии"
+        )
+    }
 
 
-@router.message_created(Command("webapp"))
-async def cmd_webapp(event):
-    me = await event.bot.get_me()
+async def _webapp_payload():
+    me = await bot.get_me()
     kb = KeyboardBuilder(inline=True)
     kb.open_app(
         text="Открыть мини-приложение",
@@ -132,10 +138,43 @@ async def cmd_webapp(event):
         contact_id=me["user_id"],
         payload="demo",
     )
-    await event.answer(
-        "🚀 Нажми кнопку чтобы открыть мини-приложение:",
-        inline_keyboard=kb.build(),
-    )
+    return {
+        "text": "🚀 Нажми кнопку чтобы открыть мини-приложение:",
+        "inline_keyboard": kb.build(),
+    }
+
+
+async def _status_payload():
+    users = sse.active_users()
+    total = sse.connection_count()
+    if not users:
+        text = "📭 Нет активных WebApp-сессий"
+    else:
+        lines = [f"📡 Активных WebApp-сессий: {total}"]
+        for uid in users:
+            n = sse.connection_count(uid)
+            lines.append(f"  • user_id={uid}: {n} вкладка(ок)")
+        text = "\n".join(lines)
+    return {"text": text}
+
+
+COMMAND_HANDLERS = {
+    "start":  _start_payload,
+    "webapp": _webapp_payload,
+    "status": _status_payload,
+}
+
+
+@router.message_created(Command("start"))
+async def cmd_start(event):
+    payload = await _start_payload()
+    await event.answer(payload["text"])
+
+
+@router.message_created(Command("webapp"))
+async def cmd_webapp(event):
+    payload = await _webapp_payload()
+    await event.answer(payload["text"], inline_keyboard=payload.get("inline_keyboard"))
 
 
 @router.message_created(Command("echo"))
@@ -168,16 +207,8 @@ async def cmd_echo(event):
 
 @router.message_created(Command("status"))
 async def cmd_status(event):
-    users = sse.active_users()
-    total = sse.connection_count()
-    if not users:
-        await event.answer("📭 Нет активных WebApp-сессий")
-    else:
-        lines = [f"📡 Активных WebApp-сессий: {total}"]
-        for uid in users:
-            n = sse.connection_count(uid)
-            lines.append(f"  • user_id={uid}: {n} вкладка(ок)")
-        await event.answer("\n".join(lines))
+    payload = await _status_payload()
+    await event.answer(payload["text"])
 
 
 @router.message_created()
@@ -366,6 +397,51 @@ async def handle_send(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "mid": result.get("message", {}).get("body", {}).get("mid")})
 
 
+async def handle_command(request: web.Request) -> web.Response:
+    """
+    POST /api/command
+    WebApp → Bot: выполняет команду бота (как кнопку в чате) и доставляет
+    результат в чат пользователя — та же логика, что у /start, /webapp, /status.
+    Body: { "command": "start" | "webapp" | "status" }
+    """
+    init_data = request["webapp_init_data"]
+    if not init_data.user:
+        return web.json_response({"ok": False, "error": "No user in initData"}, status=400)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"ok": False, "error": "Invalid JSON"}, status=400)
+
+    command = (body.get("command") or "").strip().lstrip("/")
+    handler = COMMAND_HANDLERS.get(command)
+    if handler is None:
+        return web.json_response({"ok": False, "error": f"Unknown command: {command}"}, status=400)
+
+    user_id = init_data.user.id
+    payload = await handler()
+
+    try:
+        await bot.send_message(
+            chat_id=user_id,
+            user_id=user_id,
+            text=payload["text"],
+            inline_keyboard=payload.get("inline_keyboard"),
+        )
+        logger.info(f"WebApp→Bot command: user_id={user_id} command={command!r}")
+    except Exception as exc:
+        logger.error(f"Failed to deliver command {command!r}: {exc}")
+        return web.json_response({"ok": False, "error": "Failed to deliver command"}, status=500)
+
+    await sse.publish(
+        user_id=user_id,
+        event="command_executed",
+        data={"command": command, "text": payload["text"]},
+    )
+
+    return web.json_response({"ok": True, "command": command, "text": payload["text"]})
+
+
 async def handle_events(request: web.Request) -> web.Response:
     """
     GET /api/events
@@ -377,6 +453,7 @@ async def handle_events(request: web.Request) -> web.Response:
       chat_message   — пользователь написал в чат
       contact_shared — контакт получен
       message_sent   — WebApp-сообщение доставлено
+      command_executed — WebApp выполнила команду бота (/api/command)
 
     Клиент (JS):
       const es = new EventSource('/api/events', {headers: {Authorization: 'MaxWebApp ...'}});
@@ -389,6 +466,40 @@ async def handle_events(request: web.Request) -> web.Response:
     user_id = init_data.user.id
     logger.info(f"SSE stream opened: user_id={user_id}")
     return await sse.stream(request, user_id=user_id)
+
+
+# ── Landing page styling (dark, minimal — same family as ShortUrl's) ───────────
+
+_HOMEPAGE_CSS = """
+<style>
+  /* !important: this block loads before the framework's own <style>, which would
+     otherwise win the cascade on conflicting body/.description/.open-in-max rules */
+  body { background: #0a0a0a !important; color: #999 !important; }
+  h1 { font-weight: 300; letter-spacing: 0.12em; text-transform: uppercase; color: #fff; }
+  .description { color: #777 !important; }
+  .open-in-max { background: #5b8dee !important; }
+  .divider { width: 60px; height: 1px; background: #2a2a2a; margin: 28px auto; }
+  .demo-links { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+  .demo-links a { font-size: 13px; padding: 8px 14px; border-radius: 8px;
+                  border: 1px solid #2a2a2a; color: #8e8e93; text-decoration: none; }
+  .demo-links a:hover { color: #fff; border-color: #5b8dee; }
+  .footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center;
+            padding: 0.75rem; font-size: 0.7rem; color: #444; letter-spacing: 0.03em;
+            background: #0a0a0a; border-top: 1px solid #1a1a1a; }
+  .footer a { color: #555; text-decoration: none; }
+  .footer a:hover { color: #5b8dee; }
+</style>
+"""
+
+_HOMEPAGE_BODY_TEMPLATE = """
+<div class="divider"></div>
+<div class="demo-links">
+  <a href="{webapp_path}/charts.html">📊 Charts demo</a>
+  <a href="{webapp_path}/table.html">📋 Table demo</a>
+  <a href="{docs_url}" target="_blank" rel="noopener">📖 Документация</a>
+</div>
+<div class="footer">AioScam WebApp Demo · <a href="https://github.com/alex-di-96/aioscam" target="_blank" rel="noopener">github.com/alex-di-96/aioscam</a></div>
+"""
 
 
 # ── App factory ────────────────────────────────────────────────────────────────
@@ -428,7 +539,12 @@ def build_web_app() -> web.Application:
 
     # Public — generic landing page at the bare domain root. Doesn't hint that
     # API_PREFIX/* exists; works with no JS (plain "Open in Max" link).
-    home = HomePage(bot, description="Демо-бот AioScam: двусторонняя связь Bot↔WebApp через SSE.")
+    home = HomePage(
+        bot,
+        description="Демо-бот AioScam: двусторонняя связь Bot↔WebApp через SSE.",
+        extra_head=_HOMEPAGE_CSS,
+        extra_body=_HOMEPAGE_BODY_TEMPLATE.format(webapp_path=WEBAPP_PATH, docs_url=DOCS_URL),
+    )
     app.router.add_get("/", home.handler)
     app.router.add_get("/health", handle_health)
 
@@ -437,6 +553,7 @@ def build_web_app() -> web.Application:
     app.router.add_post(f"{API_PREFIX}/auth",    handle_auth)
     app.router.add_post(f"{API_PREFIX}/contact", handle_contact)
     app.router.add_post(f"{API_PREFIX}/send",    handle_send)
+    app.router.add_post(f"{API_PREFIX}/command", handle_command)
     app.router.add_get (f"{API_PREFIX}/events",  handle_events)
 
     # Mini App frontend — served under WEBAPP_PATH, not the bare root, so a

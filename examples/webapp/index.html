@@ -242,9 +242,10 @@
 
 <nav class="nav-links">
   <span class="nav-link active">Bridge SDK</span>
-  <a class="nav-link" href="/index-vue.html">Vue Demo</a>
-  <a class="nav-link" href="/charts.html">Charts</a>
-  <a class="nav-link" href="/table.html">Table</a>
+  <a class="nav-link" href="index-vue.html">Vue Demo</a>
+  <a class="nav-link" href="charts.html">Charts</a>
+  <a class="nav-link" href="table.html">Table</a>
+  <a class="nav-link" href="https://aioscam.readthedocs.io" target="_blank" rel="noopener">📖 Docs</a>
 </nav>
 
 <!-- Auth -->
@@ -296,6 +297,23 @@
     <button onclick="doSend()">Отправить</button>
   </div>
   <div class="result-box" id="send-result"></div>
+</section>
+
+<!-- WebApp → Бот: команды -->
+<section>
+  <div class="section-title">Команды бота <span class="platform-badge">как в чате</span></div>
+  <div class="row">
+    <div class="row-label">
+      <span>Быстрые команды</span>
+      <small>POST /api/command — бот выполнит и доставит ответ в чат</small>
+    </div>
+    <div class="btn-group">
+      <button onclick="doCommand('start')">/start</button>
+      <button onclick="doCommand('webapp')">/webapp</button>
+      <button onclick="doCommand('status')">/status</button>
+    </div>
+  </div>
+  <div class="result-box" id="command-result"></div>
 </section>
 
 <!-- User profile from /api/me -->
@@ -682,6 +700,28 @@ async function doSend() {
   } finally {
     input.disabled = false;
     input.focus();
+  }
+}
+
+// ── Commands (/api/command) ───────────────────────────────────────────────
+
+async function doCommand(cmd) {
+  const el = document.getElementById("command-result");
+  try {
+    const resp = await fetch(API_BASE + API_PREFIX + "/command", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `MaxWebApp ${bridge.initData}`,
+      },
+      body: JSON.stringify({ command: cmd }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "Server error " + resp.status);
+    show(el, `✓ /${cmd} → ${data.text}`, "ok");
+    bridge.haptic.notification("success").catch(() => {});
+  } catch (e) {
+    show(el, "Ошибка: " + e.message, "err");
   }
 }
 

@@ -62,7 +62,7 @@ all = [
 
 [project.urls]
 Homepage = "https://github.com/alex-di-96/aioscam"
-Documentation = "https://github.com/alex-di-96/aioscam#readme"
+Documentation = "https://aioscam.readthedocs.io"
 Repository = "https://github.com/alex-di-96/aioscam"
 "Bug Tracker" = "https://github.com/alex-di-96/aioscam/issues"
 
