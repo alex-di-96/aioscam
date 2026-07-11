@@ -3,6 +3,8 @@ Bot class for interacting with Max API
 """
 
 import os
+import ssl
+import warnings
 from typing import Any, Dict, List, Optional, Union
 
 import aiohttp
@@ -14,6 +16,7 @@ from aioscam.methods.base import BaseMethod
 from aioscam.methods import GetMe, SendMessage, GetUpdates, SendCallback
 from aioscam.enums import (
     ApiPath,
+    ChatAdminPermission,
     ChatPermission,
     ChatType,
     HttpMethod,
@@ -42,13 +45,14 @@ class Bot:
     def __init__(
         self,
         token: Optional[str] = None,
-        base_url: str = "https://platform-api.max.ru",
+        base_url: str = "https://platform-api2.max.ru",
         timeout: int = 30,
         parse_mode: Optional[ParseMode] = None,
         client: Optional[AioScamClient] = None,
         rate_limit: Optional[RateLimitConfig] = None,
         auto_brand: bool = True,
         auto_telemetry: bool = True,
+        ssl_context: Optional["ssl.SSLContext"] = None,
     ):
         """
         Initialize bot
@@ -65,6 +69,10 @@ class Bot:
             auto_telemetry: Send a fire-and-forget anonymous usage ping
                             (version + bot_id) to the AioScam telemetry endpoint
                             on startup. Independent of auto_brand. Pass False to opt out.
+            ssl_context: Custom SSL context for API connections. By default the
+                         client extends the system trust store with the bundled
+                         Russian Trusted CA (Минцифры) certificates required by
+                         platform-api2.max.ru — see aioscam.certs.
         """
         self.token = token or os.getenv("MAX_BOT_TOKEN")
         if not self.token:
@@ -78,6 +86,7 @@ class Bot:
             base_url=base_url,
             timeout=timeout,
             rate_limit=rate_limit,
+            ssl_context=ssl_context,
         )
         self._me: Optional[Dict[str, Any]] = None
     
@@ -125,17 +134,18 @@ class Bot:
     async def get_me_from_chat(self, chat_id: Union[int, str]) -> Dict[str, Any]:
         """
         Get bot info in context of specific chat
-        
+
+        Path: GET /chats/{chat_id}/members/me (official Max SDK pattern)
+
         Args:
             chat_id: Chat ID or username
-        
+
         Returns:
             Dict with bot info in chat
         """
         response = await self._client.request(
-            ApiPath.GET_ME_FROM_CHAT.value,
+            f"{ApiPath.GET_CHATS.value}/{chat_id}/members/me",
             method=HttpMethod.GET,
-            params={"chat_id": chat_id},
         )
         return response.result
     
@@ -476,6 +486,8 @@ class Bot:
         """
         Pin message in chat
 
+        Path: PUT /chats/{chat_id}/pin (official Max SDK pattern)
+
         Args:
             chat_id: Chat ID
             message_id: Message ID
@@ -484,16 +496,14 @@ class Bot:
         Returns:
             Pinned message data
         """
-        body: Dict[str, Any] = {
-            "chat_id": chat_id,
-            "message_id": message_id,
-        }
+        body: Dict[str, Any] = {"message_id": message_id}
 
         if notify is not None:
             body["notify"] = notify
 
         response = await self._client.request(
-            ApiPath.PIN_MESSAGE.value,
+            f"{ApiPath.GET_CHATS.value}/{chat_id}{ApiPath.PIN_MESSAGE.value}",
+            method=HttpMethod.PUT,
             body=body,
         )
         return response.result
@@ -505,6 +515,8 @@ class Bot:
         """
         Unpin message in chat (matches official Python SDK)
 
+        Path: DELETE /chats/{chat_id}/pin
+
         Args:
             chat_id: Chat ID
 
@@ -512,9 +524,8 @@ class Bot:
             True if unpinned
         """
         response = await self._client.request(
-            ApiPath.DELETE_PIN_MESSAGE.value,
+            f"{ApiPath.GET_CHATS.value}/{chat_id}{ApiPath.DELETE_PIN_MESSAGE.value}",
             method=HttpMethod.DELETE,
-            params={"chat_id": chat_id},
         )
         return response.ok
     
@@ -525,6 +536,8 @@ class Bot:
         """
         Get pinned message
 
+        Path: GET /chats/{chat_id}/pin
+
         Args:
             chat_id: Chat ID
 
@@ -532,9 +545,8 @@ class Bot:
             Pinned message data or None
         """
         response = await self._client.request(
-            ApiPath.GET_PINNED_MESSAGE.value,
+            f"{ApiPath.GET_CHATS.value}/{chat_id}{ApiPath.GET_PINNED_MESSAGE.value}",
             method=HttpMethod.GET,
-            params={"chat_id": chat_id},
         )
         return response.result
 
@@ -555,7 +567,7 @@ class Bot:
         Send callback answer
 
         Matches official Max SDK (Python, Go, TypeScript):
-        - URL: https://botapi.max.ru/answers
+        - URL: POST /answers on base_url (platform-api2.max.ru)
         - Auth: Authorization header (access_token query param deprecated by Max API)
         - Body: JSON {"message": NewMessageBody, "notification": string}
 
@@ -607,15 +619,29 @@ class Bot:
     async def get_chats(self) -> List[Dict[str, Any]]:
         """
         Get all chats where bot participates
-        
+
+        .. deprecated:: 0.2.2
+            ``GET /chats`` was removed from Max API in June 2026 and the server
+            now rejects it. Accumulate chat_ids yourself from ``bot_added`` /
+            ``bot_started`` events (and drop them on ``bot_removed``).
+
         Returns:
             List of chats
         """
+        warnings.warn(
+            "Bot.get_chats() calls GET /chats, which Max API removed in June 2026. "
+            "Track chat_ids from bot_added/bot_started events instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         response = await self._client.request(
             ApiPath.GET_CHATS.value,
             method=HttpMethod.GET,
         )
-        return response.result or []
+        result = response.result
+        if isinstance(result, dict):
+            return result.get("chats", [])
+        return result or []
     
     async def get_chat_by_id(
         self,
@@ -624,6 +650,8 @@ class Bot:
         """
         Get chat by ID
 
+        Path: GET /chats/{id} (official Max SDK pattern)
+
         Args:
             id: Chat ID
 
@@ -631,9 +659,8 @@ class Bot:
             Chat data
         """
         response = await self._client.request(
-            ApiPath.GET_CHAT_BY_ID.value,
+            f"{ApiPath.GET_CHAT_BY_ID.value}/{id}",
             method=HttpMethod.GET,
-            params={"id": id},
         )
         return response.result
     
@@ -642,18 +669,21 @@ class Bot:
         link: str,
     ) -> Dict[str, Any]:
         """
-        Get chat by invite link
-        
+        Get chat by public link or username
+
+        Path: GET /chats/{chatLink} (official Max SDK pattern) —
+        the trailing "@name" part of the link is used as the path segment.
+
         Args:
-            link: Chat invite link
-        
+            link: Chat public link ("https://max.ru/group" / "@group" / "group")
+
         Returns:
             Chat data
         """
+        chat_link = link.rstrip("/").rsplit("/", 1)[-1].lstrip("@")
         response = await self._client.request(
-            ApiPath.GET_CHAT_BY_LINK.value,
+            f"{ApiPath.GET_CHAT_BY_LINK.value}/{chat_link}",
             method=HttpMethod.GET,
-            params={"link": link},
         )
         return response.result
     
@@ -668,6 +698,8 @@ class Bot:
         """
         Edit chat info
 
+        Path: PATCH /chats/{chat_id} (official Max SDK pattern)
+
         Args:
             chat_id: Chat ID
             title: New title
@@ -678,7 +710,7 @@ class Bot:
         Returns:
             Edited chat data
         """
-        body: Dict[str, Any] = {"chat_id": chat_id}
+        body: Dict[str, Any] = {}
 
         if title:
             body["title"] = title
@@ -692,7 +724,8 @@ class Bot:
         body.update(kwargs)
 
         response = await self._client.request(
-            ApiPath.EDIT_CHAT.value,
+            f"{ApiPath.EDIT_CHAT.value}/{chat_id}",
+            method=HttpMethod.PATCH,
             body=body,
         )
         return response.result
@@ -703,16 +736,18 @@ class Bot:
     ) -> bool:
         """
         Delete chat
-        
+
+        Path: DELETE /chats/{chat_id} (official Max SDK pattern)
+
         Args:
             chat_id: Chat ID
-        
+
         Returns:
             True if deleted
         """
         response = await self._client.request(
-            ApiPath.DELETE_CHAT.value,
-            body={"chat_id": chat_id},
+            f"{ApiPath.DELETE_CHAT.value}/{chat_id}",
+            method=HttpMethod.DELETE,
         )
         return response.ok
     
@@ -726,6 +761,8 @@ class Bot:
         """
         Add members to chat
 
+        Path: POST /chats/{chat_id}/members (official Max SDK pattern)
+
         Args:
             chat_id: Chat ID
             user_ids: List of user IDs
@@ -734,11 +771,8 @@ class Bot:
             Operation result
         """
         response = await self._client.request(
-            ApiPath.ADD_MEMBERS_CHAT.value,
-            body={
-                "chat_id": chat_id,
-                "user_ids": user_ids,
-            },
+            f"{ApiPath.GET_CHATS.value}/{chat_id}{ApiPath.ADD_MEMBERS_CHAT.value}",
+            body={"user_ids": user_ids},
         )
         return response.result
 
@@ -749,22 +783,27 @@ class Bot:
         self,
         chat_id: Union[int, str],
         user_id: Union[int, str],
+        block: bool = False,
     ) -> bool:
         """
         Remove member from chat
 
+        Path: DELETE /chats/{chat_id}/members?user_id=&block= (official Max SDK pattern)
+
         Args:
             chat_id: Chat ID
             user_id: User ID
+            block: Also block the user (default False)
 
         Returns:
             True if removed
         """
         response = await self._client.request(
-            ApiPath.REMOVE_MEMBER_CHAT.value,
-            body={
-                "chat_id": chat_id,
+            f"{ApiPath.GET_CHATS.value}/{chat_id}{ApiPath.REMOVE_MEMBER_CHAT.value}",
+            method=HttpMethod.DELETE,
+            params={
                 "user_id": user_id,
+                "block": str(block).lower(),
             },
         )
         return response.ok
@@ -788,27 +827,30 @@ class Bot:
             user_id: User ID
             can_change_info: Allow changing chat info
             can_invite: Allow inviting members
-            **kwargs: Additional parameters
+            **kwargs: Additional parameters (e.g. permissions=[...] with raw
+                      Max API permission strings)
 
         Returns:
             Operation result
         """
-        body: Dict[str, Any] = {
-            "chat_id": chat_id,
-            "user_id": user_id,
-        }
+        # Path: POST /chats/{chat_id}/members/admins, body {"admins": [...]}
+        # (official Max SDK pattern)
+        permissions: List[str] = list(kwargs.pop("permissions", []) or [])
 
-        if can_change_info is not None:
-            body["can_change_info"] = can_change_info
+        if can_change_info:
+            permissions.append(ChatAdminPermission.CHANGE_CHAT_INFO.value)
 
-        if can_invite is not None:
-            body["can_invite"] = can_invite
+        if can_invite:
+            permissions.append(ChatAdminPermission.ADD_REMOVE_MEMBERS.value)
 
-        body.update(kwargs)
+        admin: Dict[str, Any] = {"user_id": user_id}
+        if permissions:
+            admin["permissions"] = permissions
+        admin.update(kwargs)
 
         response = await self._client.request(
-            ApiPath.ADD_ADMIN_CHAT.value,
-            body=body,
+            f"{ApiPath.GET_CHATS.value}/{chat_id}{ApiPath.ADD_MEMBERS_CHAT.value}{ApiPath.ADD_ADMIN_CHAT.value}",
+            body={"admins": [admin]},
         )
         return response.result
 
@@ -822,57 +864,60 @@ class Bot:
     ) -> bool:
         """
         Remove admin from chat
-        
+
+        Path: DELETE /chats/{chat_id}/members/admins/{user_id} (official Max SDK pattern)
+
         Args:
             chat_id: Chat ID
             user_id: User ID
-        
+
         Returns:
             True if removed
         """
         response = await self._client.request(
-            ApiPath.REMOVE_ADMIN.value,
-            body={
-                "chat_id": chat_id,
-                "user_id": user_id,
-            },
+            f"{ApiPath.GET_CHATS.value}/{chat_id}/members{ApiPath.REMOVE_ADMIN.value}/{user_id}",
+            method=HttpMethod.DELETE,
         )
         return response.ok
     
     async def get_chat_members(
         self,
         chat_id: Union[int, str],
-        types: Optional[List[str]] = None,
-        limit: int = 100,
-        offset: int = 0,
+        user_ids: Optional[List[Union[int, str]]] = None,
+        marker: Optional[int] = None,
+        count: int = 100,
     ) -> List[Dict[str, Any]]:
         """
         Get chat members
 
+        Path: GET /chats/{chat_id}/members (official Max SDK pattern)
+
         Args:
             chat_id: Chat ID
-            types: Member types filter
-            limit: Members limit
-            offset: Offset
+            user_ids: Fetch only these user IDs (comma-joined query param)
+            marker: Pagination cursor from previous response
+            count: Page size (default 100)
 
         Returns:
             List of members
         """
-        params: Dict[str, Any] = {
-            "chat_id": chat_id,
-            "limit": limit,
-            "offset": offset,
-        }
+        params: Dict[str, Any] = {"count": count}
 
-        if types:
-            params["types"] = types
+        if user_ids:
+            params["user_ids"] = ",".join(str(uid) for uid in user_ids)
+
+        if marker is not None:
+            params["marker"] = marker
 
         response = await self._client.request(
-            ApiPath.GET_MEMBERS_CHAT.value,
+            f"{ApiPath.GET_CHATS.value}/{chat_id}{ApiPath.GET_MEMBERS_CHAT.value}",
             method=HttpMethod.GET,
             params=params,
         )
-        return response.result or []
+        result = response.result
+        if isinstance(result, dict):
+            return result.get("members", [])
+        return result or []
 
     # Alias for backward compatibility
     get_members_chat = get_chat_members
@@ -885,22 +930,25 @@ class Bot:
         """
         Get chat member
 
+        Path: GET /chats/{chat_id}/members?user_ids={user_id} (official Max SDK pattern)
+
         Args:
             chat_id: Chat ID
             user_id: User ID
 
         Returns:
-            Member data
+            Member data (or None if not found)
         """
         response = await self._client.request(
-            ApiPath.GET_MEMBERS_CHAT.value,
+            f"{ApiPath.GET_CHATS.value}/{chat_id}{ApiPath.GET_MEMBERS_CHAT.value}",
             method=HttpMethod.GET,
-            params={
-                "chat_id": chat_id,
-                "user_id": user_id,
-            },
+            params={"user_ids": str(user_id)},
         )
-        return response.result
+        result = response.result
+        if isinstance(result, dict):
+            members = result.get("members", [])
+            return members[0] if members else None
+        return result
 
     async def get_list_admin_chat(
         self,
@@ -908,19 +956,23 @@ class Bot:
     ) -> List[Dict[str, Any]]:
         """
         Get chat admins
-        
+
+        Path: GET /chats/{chat_id}/members/admins (official Max SDK pattern)
+
         Args:
             chat_id: Chat ID
-        
+
         Returns:
             List of admins
         """
         response = await self._client.request(
-            ApiPath.GET_LIST_ADMIN_CHAT.value,
+            f"{ApiPath.GET_CHATS.value}/{chat_id}/members{ApiPath.GET_LIST_ADMIN_CHAT.value}",
             method=HttpMethod.GET,
-            params={"chat_id": chat_id},
         )
-        return response.result or []
+        result = response.result
+        if isinstance(result, dict):
+            return result.get("members", [])
+        return result or []
     
     async def delete_me_from_chat(
         self,
@@ -929,6 +981,8 @@ class Bot:
         """
         Remove bot from chat
 
+        Path: DELETE /chats/{chat_id}/members/me (official Max SDK pattern)
+
         Args:
             chat_id: Chat ID
 
@@ -936,8 +990,8 @@ class Bot:
             True if removed
         """
         response = await self._client.request(
-            ApiPath.DELETE_BOT_FROM_CHAT.value,
-            body={"chat_id": chat_id},
+            f"{ApiPath.GET_CHATS.value}/{chat_id}{ApiPath.DELETE_BOT_FROM_CHAT.value}/me",
+            method=HttpMethod.DELETE,
         )
         return response.ok
 
@@ -955,6 +1009,8 @@ class Bot:
         """
         Change chat info
 
+        Path: PATCH /chats/{chat_id} (official Max SDK pattern)
+
         Args:
             chat_id: Chat ID
             title: New title
@@ -965,7 +1021,7 @@ class Bot:
         Returns:
             Updated chat data
         """
-        body: Dict[str, Any] = {"chat_id": chat_id}
+        body: Dict[str, Any] = {}
 
         if title:
             body["title"] = title
@@ -979,7 +1035,8 @@ class Bot:
         body.update(kwargs)
 
         response = await self._client.request(
-            ApiPath.CHANGE_INFO.value,
+            f"{ApiPath.CHANGE_INFO.value}/{chat_id}",
+            method=HttpMethod.PATCH,
             body=body,
         )
         return response.result

@@ -318,7 +318,7 @@ Fix: added `quote(payload, safe='')` to the group deep link URL.
 ✅ `ClipboardButton.payload`
 ✅ Rate limiter — token bucket, 429 retry, exponential backoff
 ✅ Methods API — `Bot.execute(GetMe())`, `Bot.execute(SendMessage(...))`
-✅ `send_callback` — SDK-aligned (botapi.max.ru, JSON, NewMessageBody)
+✅ `send_callback` — SDK-aligned (POST /answers, JSON, NewMessageBody)
 ✅ Type dedup — единый источник для User/Message/MessageBody
 ✅ EventContext — `user_id`, `chat_id` convenience properties
 ✅ 158/158 тестов (+58 новых)

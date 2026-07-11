@@ -4,7 +4,7 @@ SendCallback API method
 
 from typing import Any, Dict, Optional
 
-from aioscam.enums import HttpMethod
+from aioscam.enums import ApiPath, HttpMethod
 from aioscam.methods.base import BaseMethod
 
 
@@ -12,7 +12,8 @@ class SendCallback(BaseMethod):
     """
     Send callback answer method
 
-    Uses https://botapi.max.ru/answers as required by Max API
+    POST /answers on the bot's base_url (platform-api2.max.ru).
+    Legacy botapi.max.ru is deprecated by Max since the 2026 migration.
     """
 
     def __init__(
@@ -24,8 +25,7 @@ class SendCallback(BaseMethod):
         keyboard: Optional[Any] = None,
         parse_mode: Optional[Any] = None,
     ):
-        # Use absolute URL to bypass base_url in AioScamClient
-        super().__init__("https://botapi.max.ru/answers", method=HttpMethod.POST)
+        super().__init__(ApiPath.SEND_CALLBACK.value, method=HttpMethod.POST)
         self.callback_id = callback_id
         self.message = message
         self.notification = notification

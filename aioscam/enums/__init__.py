@@ -5,7 +5,7 @@ Enums for Max API
 from aioscam.enums.api_path import ApiPath
 from aioscam.enums.attachment import AttachmentType
 from aioscam.enums.button import ButtonType
-from aioscam.enums.chat import ChatStatus, ChatType, ChatPermission
+from aioscam.enums.chat import ChatAdminPermission, ChatStatus, ChatType, ChatPermission
 from aioscam.enums.http_method import HttpMethod
 from aioscam.enums.intent import Intent
 from aioscam.enums.message_link import MessageLinkType
@@ -19,6 +19,7 @@ __all__ = [
     "ApiPath",
     "AttachmentType",
     "ButtonType",
+    "ChatAdminPermission",
     "ChatStatus",
     "ChatType",
     "ChatPermission",

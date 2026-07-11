@@ -75,7 +75,7 @@ class NetworkError(AioScamError):
     def __init__(self, message: str, status: Optional[int] = None, hint: str = ""):
         super().__init__(
             message,
-            hint=hint or "check internet connectivity and that platform-api.max.ru is reachable from this host",
+            hint=hint or "check internet connectivity and that platform-api2.max.ru is reachable from this host",
         )
         self.status = status
 

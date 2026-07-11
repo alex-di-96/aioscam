@@ -1,9 +1,17 @@
 # Max Bot API — Полная справка
 
 > **Источник:** Официальные SDK max-messenger (Go, TypeScript)
-> **Дата обновления:** 2026-05-08
-> **Base URL:** `https://platform-api.max.ru`
+> **Дата обновления:** 2026-07-09
+> **Base URL:** `https://platform-api2.max.ru`
 > **Auth:** `{"Authorization": "<token>"}` (без "Bearer ")
+
+> ⚠️ **Миграция 2026:** до **19 июля 2026** все запросы должны идти на
+> `platform-api2.max.ru` (старый `platform-api.max.ru` отключается; ещё более
+> старый `botapi.max.ru` уже отключён). Новый сервер использует сертификат
+> Минцифры — **AioScam включает его в пакет** (`aioscam/certs/`), клиент
+> доверяет ему автоматически, системный trust store трогать не нужно.
+> `/answers` теперь на том же base URL, отдельного callback-домена больше нет.
+> Лимит: 30 rps.
 
 ---
 
@@ -37,9 +45,9 @@
 
 | Метод | Endpoint | HTTP | Body | Query | Описание |
 |-------|----------|------|------|-------|----------|
-| `get_chats` | `/chats` | GET | — | `count?`, `marker?` | Список чатов |
+| ~~`get_chats`~~ | ~~`/chats`~~ | ~~GET~~ | — | — | ❌ Удалён из API в июне 2026 — копите chat_id из событий `bot_added`/`bot_started` |
 | `get_chat` | `/chats/{id}` | GET | — | — | Инфо о чате |
-| `get_chat_by_link` | `/chats/by_link` | GET | — | `chat_link` | Поиск по ссылке |
+| `get_chat_by_link` | `/chats/{chatLink}` | GET | — | — | Поиск по публичной ссылке/username (сегмент пути) |
 | `edit_chat` | `/chats/{id}` | PATCH | `{title, photo, rules, ...}` | — | Редактирование |
 | `get_chat_membership` | `/chats/{id}/members/me` | GET | — | — | Участие бота |
 | `get_chat_members` | `/chats/{id}/members` | GET | — | `count?`, `marker?`, `user_ids?` | Участники |

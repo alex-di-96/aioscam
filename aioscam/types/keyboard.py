@@ -220,10 +220,10 @@ class InlineKeyboard(MaxObject):
                 "type": btn_type,
             }
 
-            # Callback buttons need payload and intent
+            # Callback buttons need payload.
+            # "intent" is deprecated by Max API (server ignores it, always default)
             if btn_type in ('callback',):
                 result["payload"] = getattr(btn, 'callback_data', '')
-                result["intent"] = getattr(btn, 'intent', 'default')
 
             # Link buttons need url
             if btn_type == 'link':

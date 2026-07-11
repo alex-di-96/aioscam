@@ -25,6 +25,12 @@ def _last_call(bot):
     return bot._client.request.call_args
 
 
+def _path(bot):
+    """Path (first positional arg) of the last client.request call."""
+    call = bot._client.request.call_args
+    return call.args[0] if call.args else call.kwargs.get("path")
+
+
 # ─── get_me_from_chat ────────────────────────────────────────────────────────
 
 class TestGetMeFromChat:
@@ -38,8 +44,7 @@ class TestGetMeFromChat:
     async def test_passes_chat_id(self):
         bot = _bot()
         await bot.get_me_from_chat(chat_id=99)
-        params = _last_call(bot).kwargs.get("params", {})
-        assert params["chat_id"] == 99
+        assert _path(bot) == "/chats/99/members/me"
 
     @pytest.mark.asyncio
     async def test_uses_get_method(self):
@@ -52,22 +57,35 @@ class TestGetMeFromChat:
 # ─── Chat methods ─────────────────────────────────────────────────────────────
 
 class TestGetChats:
+    """GET /chats was removed from Max API in June 2026 — the method is deprecated."""
+
     @pytest.mark.asyncio
     async def test_returns_list(self):
         bot = _bot(result=[{"id": 1}, {"id": 2}])
-        result = await bot.get_chats()
+        with pytest.warns(DeprecationWarning):
+            result = await bot.get_chats()
         assert len(result) == 2
 
     @pytest.mark.asyncio
     async def test_none_result_returns_empty(self):
         bot = _bot(result=None)
-        result = await bot.get_chats()
+        with pytest.warns(DeprecationWarning):
+            result = await bot.get_chats()
         assert result == []
+
+    @pytest.mark.asyncio
+    async def test_chats_extracted_from_dict_result(self):
+        # Live platform-api2 responds {"chats": [...]} (verified 2026-07-11)
+        bot = _bot(result={"chats": [{"chat_id": 1}]})
+        with pytest.warns(DeprecationWarning):
+            result = await bot.get_chats()
+        assert result == [{"chat_id": 1}]
 
     @pytest.mark.asyncio
     async def test_uses_get_method(self):
         bot = _bot()
-        await bot.get_chats()
+        with pytest.warns(DeprecationWarning):
+            await bot.get_chats()
         assert _last_call(bot).kwargs.get("method") == HttpMethod.GET
 
 
@@ -76,8 +94,7 @@ class TestGetChatById:
     async def test_passes_id(self):
         bot = _bot(result={"chat_id": 7})
         await bot.get_chat_by_id(id=7)
-        params = _last_call(bot).kwargs.get("params", {})
-        assert params["id"] == 7
+        assert _path(bot) == "/chats/7"
 
     @pytest.mark.asyncio
     async def test_uses_get_method(self):
@@ -91,8 +108,16 @@ class TestGetChatByLink:
     async def test_passes_link(self):
         bot = _bot(result={"chat_id": 5})
         await bot.get_chat_by_link(link="https://max.ru/group/abc")
-        params = _last_call(bot).kwargs.get("params", {})
-        assert params["link"] == "https://max.ru/group/abc"
+        assert _path(bot) == "/chats/abc"
+
+    @pytest.mark.asyncio
+    async def test_username_forms(self):
+        bot = _bot(result={"chat_id": 5})
+        await bot.get_chat_by_link(link="@mygroup")
+        assert _path(bot) == "/chats/mygroup"
+
+        await bot.get_chat_by_link(link="mygroup")
+        assert _path(bot) == "/chats/mygroup"
 
 
 class TestEditChat:
@@ -133,11 +158,11 @@ class TestDeleteChat:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_passes_chat_id_in_body(self):
+    async def test_passes_chat_id_in_path(self):
         bot = _bot()
         await bot.delete_chat(chat_id=42)
-        body = _last_call(bot).kwargs.get("body", {})
-        assert body["chat_id"] == 42
+        assert _path(bot) == "/chats/42"
+        assert _last_call(bot).kwargs.get("method") == HttpMethod.DELETE
 
 
 # ─── Chat members ─────────────────────────────────────────────────────────────
@@ -159,8 +184,20 @@ class TestGetChatMembers:
     async def test_passes_chat_id(self):
         bot = _bot()
         await bot.get_chat_members(chat_id=7)
+        assert _path(bot) == "/chats/7/members"
+
+    @pytest.mark.asyncio
+    async def test_members_extracted_from_dict_result(self):
+        bot = _bot(result={"members": [{"id": 1}], "marker": 2})
+        result = await bot.get_chat_members(chat_id=7)
+        assert result == [{"id": 1}]
+
+    @pytest.mark.asyncio
+    async def test_user_ids_joined(self):
+        bot = _bot(result={"members": []})
+        await bot.get_chat_members(chat_id=7, user_ids=[10, 20])
         params = _last_call(bot).kwargs.get("params", {})
-        assert params["chat_id"] == 7
+        assert params["user_ids"] == "10,20"
 
     @pytest.mark.asyncio
     async def test_alias_get_members_chat(self):
@@ -172,17 +209,23 @@ class TestGetChatMembers:
 class TestGetChatMember:
     @pytest.mark.asyncio
     async def test_passes_chat_and_user_id(self):
-        bot = _bot(result={"id": 99})
+        bot = _bot(result={"members": [{"id": 99}]})
         await bot.get_chat_member(chat_id=1, user_id=99)
+        assert _path(bot) == "/chats/1/members"
         params = _last_call(bot).kwargs.get("params", {})
-        assert params["chat_id"] == 1
-        assert params["user_id"] == 99
+        assert params["user_ids"] == "99"
 
     @pytest.mark.asyncio
-    async def test_returns_result(self):
-        bot = _bot(result={"id": 99, "role": "admin"})
+    async def test_returns_first_member(self):
+        bot = _bot(result={"members": [{"id": 99, "role": "admin"}]})
         result = await bot.get_chat_member(chat_id=1, user_id=99)
         assert result["role"] == "admin"
+
+    @pytest.mark.asyncio
+    async def test_not_found_returns_none(self):
+        bot = _bot(result={"members": []})
+        result = await bot.get_chat_member(chat_id=1, user_id=99)
+        assert result is None
 
 
 class TestAddChatMembers:
@@ -190,16 +233,15 @@ class TestAddChatMembers:
     async def test_passes_user_ids(self):
         bot = _bot(result={"added": 2})
         await bot.add_chat_members(chat_id=1, user_ids=[10, 20])
+        assert _path(bot) == "/chats/1/members"
         body = _last_call(bot).kwargs.get("body", {})
         assert body["user_ids"] == [10, 20]
-        assert body["chat_id"] == 1
 
     @pytest.mark.asyncio
     async def test_alias_add_members_chat(self):
         bot = _bot(result={})
         await bot.add_members_chat(chat_id=1, user_ids=[5])
-        body = _last_call(bot).kwargs.get("body", {})
-        assert body["chat_id"] == 1
+        assert _path(bot) == "/chats/1/members"
 
 
 class TestRemoveMemberChat:
@@ -240,17 +282,26 @@ class TestAddListAdminChat:
             chat_id=1, user_id=99,
             can_change_info=True, can_invite=False
         )
+        assert _path(bot) == "/chats/1/members/admins"
         body = _last_call(bot).kwargs.get("body", {})
-        assert body["can_change_info"] is True
-        assert body["can_invite"] is False
+        admin = body["admins"][0]
+        assert admin["user_id"] == 99
+        assert admin["permissions"] == ["change_chat_info"]
 
     @pytest.mark.asyncio
     async def test_skips_none_permissions(self):
         bot = _bot(result={})
         await bot.add_list_admin_chat(chat_id=1, user_id=99)
         body = _last_call(bot).kwargs.get("body", {})
-        assert "can_change_info" not in body
-        assert "can_invite" not in body
+        admin = body["admins"][0]
+        assert admin == {"user_id": 99}
+
+    @pytest.mark.asyncio
+    async def test_raw_permissions_kwarg(self):
+        bot = _bot(result={})
+        await bot.add_list_admin_chat(chat_id=1, user_id=99, permissions=["write"])
+        body = _last_call(bot).kwargs.get("body", {})
+        assert body["admins"][0]["permissions"] == ["write"]
 
 
 class TestRemoveAdmin:
@@ -261,12 +312,11 @@ class TestRemoveAdmin:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_passes_ids_in_body(self):
+    async def test_passes_ids_in_path(self):
         bot = _bot()
         await bot.remove_admin(chat_id=5, user_id=7)
-        body = _last_call(bot).kwargs.get("body", {})
-        assert body["chat_id"] == 5
-        assert body["user_id"] == 7
+        assert _path(bot) == "/chats/5/members/admins/7"
+        assert _last_call(bot).kwargs.get("method") == HttpMethod.DELETE
 
 
 # ─── change_info ──────────────────────────────────────────────────────────────
@@ -295,8 +345,9 @@ class TestPinMessage:
     async def test_passes_ids(self):
         bot = _bot(result={"pinned": True})
         await bot.pin_message(chat_id=1, message_id="mid.1")
+        assert _path(bot) == "/chats/1/pin"
+        assert _last_call(bot).kwargs.get("method") == HttpMethod.PUT
         body = _last_call(bot).kwargs.get("body", {})
-        assert body["chat_id"] == 1
         assert body["message_id"] == "mid.1"
 
     @pytest.mark.asyncio
@@ -325,8 +376,7 @@ class TestGetPinMessage:
     async def test_passes_chat_id(self):
         bot = _bot()
         await bot.get_pin_message(chat_id=77)
-        params = _last_call(bot).kwargs.get("params", {})
-        assert params["chat_id"] == 77
+        assert _path(bot) == "/chats/77/pin"
 
     @pytest.mark.asyncio
     async def test_alias_get_pinned_message(self):

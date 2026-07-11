@@ -7,12 +7,14 @@ import json
 import logging
 import mimetypes
 import os
+import ssl
 from datetime import datetime
 from typing import Any, Dict, Optional
 
 import aiohttp
 import aiofiles
 
+from aioscam.certs import create_ssl_context
 from aioscam.client.request import RequestBuilder
 from aioscam.client.response import Response
 from aioscam.enums import ApiPath, HttpMethod
@@ -34,17 +36,22 @@ class AioScamClient:
     def __init__(
         self,
         token: Optional[str] = None,
-        base_url: str = "https://max.ru/api/bot",
+        base_url: str = "https://platform-api2.max.ru",
         timeout: int = 30,
         session: Optional[aiohttp.ClientSession] = None,
         rate_limit: Optional[RateLimitConfig] = None,
         rate_limiter: Optional[RateLimiter] = None,
+        ssl_context: Optional[ssl.SSLContext] = None,
     ):
         self.token = token
         self.base_url = base_url
         self.default_timeout = timeout
         self._session = session
         self._close_session = False
+        # platform-api2.max.ru is signed by the Минцифры CA, which most
+        # non-Russian systems don't trust — the bundled certs (aioscam.certs)
+        # extend the default store without touching system-wide trust.
+        self._ssl_context = ssl_context or create_ssl_context()
 
         # Rate limiter: use provided instance or create from config
         if rate_limiter is not None:
@@ -55,7 +62,8 @@ class AioScamClient:
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session"""
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
+            connector = aiohttp.TCPConnector(ssl=self._ssl_context)
+            self._session = aiohttp.ClientSession(connector=connector)
             self._close_session = True
         return self._session
 

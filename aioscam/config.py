@@ -73,7 +73,7 @@ class Config:
             )
         
         # Optional
-        self.api_url = api_url or os.getenv("AIOSCAM_API_URL", "https://platform-api.max.ru")
+        self.api_url = api_url or os.getenv("AIOSCAM_API_URL", "https://platform-api2.max.ru")
     
     @property
     def env_mode(self) -> EnvMode:

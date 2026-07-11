@@ -341,8 +341,8 @@ class TestDeletePinMessage:
 
         assert result is True
         call_args = client.request.call_args
-        params = call_args.kwargs.get("params", {})
-        assert params["chat_id"] == 789
+        path = call_args.args[0] if call_args.args else call_args.kwargs.get("path")
+        assert path == "/chats/789/pin"
 
 
 class TestStateGuardConfig:

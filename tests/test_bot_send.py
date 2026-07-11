@@ -124,13 +124,13 @@ class TestSendCallback:
     @pytest.mark.asyncio
     async def test_authorization_header_used(self, bot):
         # Authorization is set by RequestBuilder.set_token() inside _do_request.
-        # We verify the request goes to the correct absolute URL (botapi.max.ru).
+        # Since the 2026 Max API migration /answers lives on base_url
+        # (platform-api2.max.ru), so the method must use a relative path.
         bot._client.request = self._ok()
         await bot.send_callback(callback_id="cb123", notification="ok")
 
         path = bot._client.request.call_args.args[0]
-        assert "botapi.max.ru" in path
-        assert "answers" in path
+        assert path == "/answers"
         # access_token must NOT appear in the call args
         assert "access_token" not in str(bot._client.request.call_args)
 

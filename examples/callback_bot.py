@@ -27,7 +27,7 @@ SETUP
 
 IMPORTANT
 ─────────
-  Max API endpoint: POST https://botapi.max.ru/answers
+  Max API endpoint: POST /answers on base URL (platform-api2.max.ru)
   Auth: Authorization header (not access_token query param — deprecated)
   Body: {"message": {"text": "..."}, "notification": "..."}
 
@@ -129,7 +129,7 @@ async def cmd_help(event):
         "```\n\n"
         "**event.answer()** — отправляет обычное сообщение в чат.\n"
         "Используй его для /команд, но НЕ для ответа на callback.\n\n"
-        "URL: `botapi.max.ru/answers`\n"
+        "URL: `platform-api2.max.ru/answers`\n"
         "Auth: `Authorization` header"
     )
 
