@@ -52,7 +52,7 @@ async def main():
     me = await bot.get_me()
     logger.info(f"Bot: {me.get('first_name')} (@{me.get('username')})")
     logger.info("Polling started...")
-    await dp.start_polling(bot, skip_updates=False, timeout=3, limit=20)
+    await dp.start_polling(bot, backlog="process", timeout=3, limit=20)
 
 if __name__ == "__main__":
     asyncio.run(main())

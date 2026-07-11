@@ -21,8 +21,11 @@
 15. [Webhook](#webhook)
 16. [WebApp (Mini Apps)](#webapp-mini-apps)
 17. [BotCapabilities](#botcapabilities)
-18. [Exceptions & Hints](#exceptions--hints)
-19. [Configuration](#configuration)
+18. [ChatRegistry](#chatregistry)
+19. [Polls & Quizzes (PollManager)](#polls--quizzes-pollmanager)
+20. [Max API v2 migration & certificates](#max-api-v2-migration--certificates)
+21. [Exceptions & Hints](#exceptions--hints)
+22. [Configuration](#configuration)
 
 ---
 
@@ -196,7 +199,11 @@ dp = Dispatcher(
 )
 child = Router(name="child")
 dp.include_router(child)
-await dp.start_polling(bot, skip_updates=True)
+# Backlog policy: what to do with updates accumulated while the bot was down
+#   "skip"     — drop them (default; equals the legacy skip_updates=True)
+#   "process"  — dispatch everything
+#   "collapse" — dedupe repeats: 50 stale /start presses from one user → one
+await dp.start_polling(bot, backlog="collapse")
 ```
 
 ---
@@ -468,6 +475,121 @@ caps.log_report(logger)  # structured banner at startup, including warnings
 Bridge SDK features (haptics, biometrics, NFC, QR, contacts) are client-side only — the server has
 no way to know the end user's platform, so they are not part of this report; check
 `window.WebApp.platform` in the frontend instead.
+
+---
+
+## ChatRegistry
+
+In June 2026 Max removed `GET /chats`: a bot can no longer ask the server which chats it is
+in. `ChatRegistry` rebuilds that knowledge bot-side and persists it in SQLite
+(`.aioscam/bot.db` — the shared database of all framework components):
+
+```python
+from aioscam import Bot, Dispatcher, ChatRegistry
+
+registry = ChatRegistry()
+dp = Dispatcher(registry=registry)
+await dp.start_polling(bot, backlog="collapse")
+
+await registry.chats()      # everything known — zero API calls
+await registry.groups()     # groups only (type="chat")
+await registry.dialogs()
+await registry.get(chat_id)
+```
+
+**How the registry fills itself:**
+- `bot_added` / `bot_started` / `chat_title_changed` events are applied automatically;
+  `bot_removed` / `dialog_removed` soft-delete the row (kept for history);
+- **lazy discovery** — any event from an unknown chat registers it;
+- **persisted marker** — the long-polling position survives restarts, so downtime events
+  (e.g. being added to a group while offline) are not lost;
+- registry events are applied in **all** backlog modes, even `"skip"`.
+
+**Manual reconciliation** (Max has no "permissions changed" event — periodic checks are
+the only way):
+
+```python
+stats = await registry.sync(bot)
+# {'bootstrapped': N, 'checked': N, 'updated': N, 'removed': N}
+```
+
+`sync()` does a best-effort bootstrap via the deprecated `GET /chats` (while Max still
+answers it), then per-chat `GET /chats/{id}` lookups (403/404 → removed) and refreshes the
+bot's permissions via `GET /chats/{id}/members/me` with a TTL cache (1 hour by default).
+
+Example: `examples/registry_bot.py`.
+
+---
+
+## Polls & Quizzes (PollManager)
+
+Max Bot API has **no native polls** (unlike Telegram). `PollManager` emulates them over
+inline keyboards: votes live in SQLite (surviving restarts), the message shows live result
+bars, hint strings are localized (ru/en bundled — notifications follow the clicking user's
+client locale, the shared message follows the creator's; poll content is never translated).
+
+```python
+from aioscam import PollManager
+
+polls = PollManager()               # same .aioscam/bot.db
+polls.attach(dp, command="poll")    # vote handler + /poll command + StateGuard allowlist
+```
+
+Users create polls right from the chat:
+
+```
+/poll Where do we eat? | Cafe | Canteen | Stay in
+/poll priv Release score? | 5 | 4 | 3
+/poll pub Friday deploy? | Yes | No
+```
+
+Visibility modes:
+
+| Mode | What the message shows |
+|------|------------------------|
+| `pub` | bars + voter names under each option |
+| `anon` | aggregate bars and numbers only (default) |
+| `priv` | just "Votes: N"; the creator reads the breakdown via the private "📊 Results" button |
+
+Programmatic (bot-driven):
+
+```python
+poll_id = await polls.send_poll(bot, chat_id, "Question?", ["Yes", "No"],
+                                visibility="pub", creator_id=admin_id)
+# creator_id=None → an "ownerless" poll: no control buttons at all,
+# closing is possible only from code
+
+await polls.send_quiz(bot, chat_id, "2+2?", ["3", "4"], correct_option=1,
+                      explanation="Arithmetic.")   # instant private ✅/❌ feedback
+
+results = await polls.results(poll_id)
+await polls.close_poll(bot, poll_id)   # keyboard removed; a quiz reveals its answer
+```
+
+Voting mechanics: single choice — the vote can be moved; `multiple=True` — toggle;
+quiz — one answer forever. `attach()` adds the poll payload prefix and the `/poll` command
+to the StateGuard allowlists, so a user stuck inside an FSM dialog can still vote.
+
+Example: `examples/poll_bot.py`.
+
+---
+
+## Max API v2 migration & certificates
+
+**By July 19, 2026** every bot must move to `platform-api2.max.ru` — the old domains
+(`platform-api.max.ru`, `botapi.max.ru`) are being shut down. aioscam ≥0.2.2 handles this
+out of the box:
+
+- the default base URL is `platform-api2.max.ru`; `/answers` (callback replies) now lives
+  on the same domain — the separate callback host is gone;
+- the new server is signed by the **Mintsifry** (Russian Trusted) CA, absent from the trust
+  stores of most non-Russian systems. The framework **bundles the official certificates**
+  (`aioscam/certs/`, downloaded from gosuslugi.ru) and trusts them for the bot's own API
+  connections only — your system trust store is never modified, nothing to install;
+- override with `Bot(ssl_context=...)` / `AioScamClient(ssl_context=...)`;
+- the new server's rate limit is 30 rps (the RateLimiter default of 10 rps leaves headroom);
+- `GET /chats` was removed from the API — `Bot.get_chats()` is deprecated, use
+  [ChatRegistry](#chatregistry) instead.
 
 ---
 

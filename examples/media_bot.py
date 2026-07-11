@@ -333,7 +333,7 @@ async def main():
     print(f"🖼️  AioScam Media Bot: {me.get('first_name', 'Unknown')}")
     print(f"Downloads directory: {DOWNLOAD_DIR}")
     print(f"{'='*50}\n")
-    await dp.start_polling(bot, skip_updates=True)
+    await dp.start_polling(bot, backlog="skip")
 
 
 if __name__ == "__main__":

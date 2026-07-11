@@ -1,5 +1,47 @@
 # AioScam Roadmap
 
+## v0.2.2 — Unreleased
+
+### Миграция Max API v2 (дедлайн Max: 19 июля 2026)
+
+- [x] **Base URL → `platform-api2.max.ru`** — старые `platform-api.max.ru` и `botapi.max.ru`
+  отключаются; `/answers` теперь на общем base URL (отдельный callback-домен упразднён)
+- [x] **Сертификаты Минцифры в пакете** (`aioscam/certs/`) — Russian Trusted Root CA (до 2032)
+  + Sub CA (до 2027) с gosuslugi.ru; клиент строит `TCPConnector` с расширенным `SSLContext`
+  автоматически, системное хранилище не затрагивается; переопределение `Bot(ssl_context=...)`
+- [x] **Все chat-методы на официальных path-параметрах** — `GET/PATCH/DELETE /chats/{id}`,
+  `/chats/{id}/members[/me|/admins[/{uid}]]`, `PUT/GET/DELETE /chats/{id}/pin`; старые плоские
+  пути с query/body попадали в удалённый листинговый эндпоинт
+- [x] **`ChatAdminPermission`** — enum официальных прав админа
+- [x] **`get_chats()` deprecated** — `GET /chats` удалён из API (июнь 2026)
+- [x] **`intent` в callback-кнопках** больше не сериализуется (API игнорирует, всегда default)
+- [x] Live-верификация на dev-боте против `platform-api2.max.ru` (TLS, чаты, сообщения, pin)
+
+### ChatRegistry + backlog-политики
+
+- [x] **`aioscam.registry.ChatRegistry`** — SQLite-реестр чатов взамен удалённого `GET /chats`:
+  авто-пополнение из событий, lazy-discovery, soft-delete, persist polling marker,
+  `sync(bot)` (bootstrap + точечная реконсиляция + TTL-обновление прав бота)
+- [x] **`Dispatcher(registry=...)`**, интеграция в polling и webhook
+- [x] **`start_polling(backlog="skip"|"process"|"collapse")`** — `skip_updates` остался алиасом;
+  починен старый skip (пропускал только одно событие из очереди — теперь честный drain);
+  collapse схлопывает пользовательский backlog по (chat, user, type), реестровые события
+  применяются к базе все по порядку в любом режиме
+- [x] **`aioscam/db.py`** — единая база бота `.aioscam/bot.db` для всех компонентов
+  (кэш инстансов по пути, refcount close)
+
+### Опросы и квизы
+
+- [x] **Poll types** — в Max Bot API нативных опросов НЕТ (проверено по официальным SDK);
+  реализована эмуляция `aioscam.polls.PollManager`: inline-кнопки, голоса в SQLite, live-бары,
+  режимы priv/anon/pub, команда `/poll [priv|anon|pub] Вопрос | вар1 | вар2`, bot-driven
+  опросы (`creator_id=None`), квизы с пояснением и раскрытием ответа при закрытии,
+  StateGuard-allowlist автоматически, локализация подсказок (ru/en; `I18n.translate()` добавлен)
+- [x] Примеры: `examples/poll_bot.py`, `examples/registry_bot.py`
+- [x] Live-проверено в реальной группе: /poll, голоса с именами (pub), закрытие кнопкой
+
+**Тесты: 714/714** (было 633 в v0.2.1).
+
 ## v0.2.1 — Current (2026-06-21)
 
 ### `HomePage` — generic landing page for WebApp servers (`aioscam/webapp/homepage.py`)
@@ -355,12 +397,12 @@ Fix: added `quote(payload, safe='')` to the group deep link URL.
 
 - [ ] `forward_message()` метод
 - [ ] `reply_to` параметр в `send_message()`
-- [ ] Poll types (`poll`, `quiz` в API)
+- [x] Poll types — нативных в Max API нет; эмуляция `PollManager` (см. v0.2.2)
 - [ ] `delete_messages()` — batch delete
 - [ ] CI/CD (GitHub Actions)
 - [ ] Scene system (иерархический FSM)
 - [ ] Webhook документация (FastAPI, Litestar примеры)
-- [ ] Пагинация для `get_chats()`, `get_messages()`
+- ~~Пагинация для `get_chats()`~~ — `GET /chats` удалён из Max API, замена: `ChatRegistry`; пагинация `get_messages()` — [ ]
 - [x] **StateGuard — regex/like/and-or для `state_guard_callbacks`** (найдено в ToirBot 2026-06-10, реализовано 2026-06-15)
 
   Было: `process_callback` сравнивал **полный** `event.callback_data` с `state_guard_callbacks`

@@ -21,8 +21,11 @@
 15. [Webhook](#webhook)
 16. [WebApp (мини-приложения)](#webapp-мини-приложения)
 17. [BotCapabilities](#botcapabilities)
-18. [Исключения и hint](#исключения-и-hint)
-19. [Конфигурация](#конфигурация)
+18. [ChatRegistry — реестр чатов](#chatregistry--реестр-чатов)
+19. [Опросы и квизы (PollManager)](#опросы-и-квизы-pollmanager)
+20. [Миграция Max API v2 и сертификаты](#миграция-max-api-v2-и-сертификаты)
+21. [Исключения и hint](#исключения-и-hint)
+22. [Конфигурация](#конфигурация)
 
 ---
 
@@ -255,7 +258,11 @@ user_router  = Router(name="user")
 dp.include_router(admin_router)
 dp.include_router(user_router)
 
-await dp.start_polling(bot, skip_updates=True)
+# Политика обработки накопленных за даунтайм событий:
+#   "skip"     — отбросить (по умолчанию; = устаревшему skip_updates=True)
+#   "process"  — обработать все
+#   "collapse" — схлопнуть повторы: 50 старых /start от одного юзера → один
+await dp.start_polling(bot, backlog="collapse")
 ```
 
 ---
@@ -639,6 +646,119 @@ caps.log_report(logger)  # структурированный баннер пр�
 Фичи Bridge SDK (haptic, биометрия, NFC, QR, контакты) — клиентские: сервер не может знать
 платформу пользователя, поэтому они не входят в этот отчёт; проверяйте `window.WebApp.platform`
 на фронтенде.
+
+---
+
+## ChatRegistry — реестр чатов
+
+В июне 2026 Max удалил `GET /chats`: бот больше не может спросить сервер, в каких чатах он
+состоит. `ChatRegistry` восстанавливает это знание на стороне бота и хранит в SQLite
+(`.aioscam/bot.db` — общая база всех компонентов фреймворка):
+
+```python
+from aioscam import Bot, Dispatcher, ChatRegistry
+
+registry = ChatRegistry()
+dp = Dispatcher(registry=registry)
+await dp.start_polling(bot, backlog="collapse")
+
+await registry.chats()      # все известные чаты — без единого API-запроса
+await registry.groups()     # только группы (type="chat")
+await registry.dialogs()    # диалоги
+await registry.get(chat_id) # один чат
+```
+
+**Как реестр пополняется:**
+- события `bot_added` / `bot_started` / `chat_title_changed` применяются автоматически;
+  `bot_removed` / `dialog_removed` помечают чат удалённым (soft-delete, строка остаётся);
+- **lazy-discovery** — любое событие из неизвестного чата регистрирует его;
+- **persist marker** — позиция long polling сохраняется: после рестарта бот продолжает с
+  места остановки, и события даунтайма (например, добавление в группу) не теряются;
+- реестровые события применяются к базе **во всех** backlog-режимах, даже при `"skip"`.
+
+**Ручная сверка** (у Max нет события «права изменились» — только периодическая проверка):
+
+```python
+stats = await registry.sync(bot)
+# {'bootstrapped': N, 'checked': N, 'updated': N, 'removed': N}
+```
+
+`sync()` делает best-effort bootstrap через deprecated `GET /chats` (пока Max его не отключил),
+затем точечные `GET /chats/{id}` по каждому известному чату (403/404 → removed) и обновляет
+права бота через `GET /chats/{id}/members/me` с TTL-кэшем (по умолчанию час).
+
+Пример: `examples/registry_bot.py`.
+
+---
+
+## Опросы и квизы (PollManager)
+
+В Max Bot API **нет нативных опросов** (в отличие от Telegram). `PollManager` эмулирует их
+inline-кнопками: голоса в SQLite (переживают рестарт), live-бары в сообщении, локализованные
+подсказки (ru/en в комплекте — уведомления на языке кликающего, текст сообщения на языке
+создателя; сам контент опроса не переводится).
+
+```python
+from aioscam import PollManager
+
+polls = PollManager()               # та же .aioscam/bot.db
+polls.attach(dp, command="poll")    # хендлер голосов + команда /poll + StateGuard-allowlist
+```
+
+Пользователи создают опросы прямо из чата:
+
+```
+/poll Куда идём обедать? | Кафе | Столовая | Останемся
+/poll priv Оценка релиза? | 5 | 4 | 3
+/poll pub Кто за пятницу? | За | Против
+```
+
+Режимы видимости:
+
+| Режим | Что видно в сообщении |
+|-------|----------------------|
+| `pub` | бары + имена проголосовавших под каждым вариантом |
+| `anon` | только бары и цифры (по умолчанию) |
+| `priv` | только «Проголосовало: N»; раскладку видит автор по кнопке «📊 Результаты» (privates-уведомление) |
+
+Программно (bot-driven):
+
+```python
+poll_id = await polls.send_poll(bot, chat_id, "Вопрос?", ["Да", "Нет"],
+                                visibility="pub", creator_id=admin_id)
+# creator_id=None → «ничейный» опрос: кнопок управления нет, закрыть можно только кодом
+
+await polls.send_quiz(bot, chat_id, "2+2?", ["3", "4"], correct_option=1,
+                      explanation="Арифметика.")   # ✅/❌ мгновенно, приватно
+
+results = await polls.results(poll_id)   # счётчики в любой момент
+await polls.close_poll(bot, poll_id)     # завершить: клавиатура убирается,
+                                         # квиз раскрывает правильный ответ
+```
+
+Механика голосования: одиночный выбор — голос можно перенести; `multiple=True` — тумблер;
+квиз — один ответ навсегда. `attach()` добавляет payload-префикс опросов и команду `/poll`
+в allowlist StateGuard — пользователь внутри FSM-диалога всё равно может голосовать.
+
+Пример: `examples/poll_bot.py`.
+
+---
+
+## Миграция Max API v2 и сертификаты
+
+**До 19 июля 2026** все боты обязаны переехать на `platform-api2.max.ru` — старые домены
+(`platform-api.max.ru`, `botapi.max.ru`) отключаются. aioscam ≥0.2.2 делает это из коробки:
+
+- дефолтный base URL — `platform-api2.max.ru`; `/answers` (ответы на callback) теперь на том
+  же домене, отдельного callback-домена больше нет;
+- новый сервер подписан сертификатом **Минцифры** (Russian Trusted CA), которого нет в
+  системных хранилищах большинства не-российских ОС. Фреймворк **включает официальные
+  сертификаты в пакет** (`aioscam/certs/`, скачаны с gosuslugi.ru) и доверяет им только для
+  соединений бота — системное хранилище не затрагивается, ничего устанавливать не нужно;
+- переопределение: `Bot(ssl_context=...)` / `AioScamClient(ssl_context=...)`;
+- лимит нового сервера — 30 запросов/сек (дефолт RateLimiter — 10/с, с запасом);
+- `GET /chats` удалён из API — `Bot.get_chats()` помечен deprecated, используйте
+  [ChatRegistry](#chatregistry--реестр-чатов).
 
 ---
 

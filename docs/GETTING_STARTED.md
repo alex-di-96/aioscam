@@ -82,7 +82,7 @@ bot = Bot(timeout=60)
 - `send_media(chat_id, attachment)` - Send any media type
 - `download_file(path, url, token)` - Download file to disk
 - `download_file_bytes(url, token)` - Download file to memory
-- `get_chats()` - Get all chats
+- ~~`get_chats()`~~ - removed from Max API (June 2026), use `ChatRegistry` instead
 - `get_chat_by_id(chat_id)` - Get chat info
 - `edit_chat(chat_id, title, description)` - Edit chat
 - `add_members_chat(chat_id, user_ids)` - Add members

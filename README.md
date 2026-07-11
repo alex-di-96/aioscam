@@ -6,6 +6,28 @@ Async Python framework for building Max messenger bots, inspired by aiogram arch
 
 **v0.2.1** — Latest (2026-06-21)
 
+### What's new in v0.2.2 (unreleased)
+
+> ⚠️ **Max API v2 migration** — old API domains shut down on **July 19, 2026**.
+> Upgrade to this version to keep your bots alive.
+
+- ✅ **Max API v2** — default base URL is now `platform-api2.max.ru`; all chat methods
+  rewritten to the official path-param endpoints (`/chats/{id}/members/...`, `PUT /chats/{id}/pin`, …)
+- ✅ **Mintsifry CA bundled** — `platform-api2.max.ru` is signed by the Russian Trusted CA, which
+  most non-Russian systems don't trust; aioscam ships the official certificates (`aioscam/certs/`)
+  and trusts them **only for bot API connections** — no system-wide certificate install needed
+- ✅ **`ChatRegistry`** — Max removed `GET /chats`; the registry rebuilds "which chats am I in?"
+  on the bot side: SQLite storage, auto-fill from events, persisted polling marker
+  (restart resumes where you stopped), `sync()` reconciliation via per-chat lookups
+- ✅ **Backlog policies** — `start_polling(bot, backlog="skip"|"process"|"collapse")`;
+  `collapse` turns 50 stale `/start` presses from one user into a single event; fixed `skip_updates`,
+  which silently skipped only ONE pending update
+- ✅ **`PollManager`** — polls and quizzes for Max (the platform has no native ones): inline-keyboard
+  emulation with live result bars, `priv`/`anon`/`pub` visibility, built-in `/poll` command,
+  votes in SQLite, localized hints (ru/en)
+- ✅ **Shared bot database** — one `.aioscam/bot.db` for all framework components
+- ✅ **714/714 tests passing**, live-verified against `platform-api2.max.ru`
+
 ### What's new in v0.2.1
 - ✅ **`HomePage`** — generic landing page for the server root, so a plain visitor/scanner sees a
   normal-looking page with no hint that `/api/*` exists; mount the real Mini App frontend under
@@ -58,6 +80,9 @@ Async Python framework for building Max messenger bots, inspired by aiogram arch
 - 🪟 **WebApp (Mini Apps)** — `initData`/contact validation, SSE push (Bot → WebApp), `/api/*` middleware
 - 📊 **`BotCapabilities`** — capability/permission report logged at startup
 - 💡 **Hint-based exceptions** — every error tells you what to actually do about it
+- 📇 **ChatRegistry** — bot-side chat list (Max removed `GET /chats`), persisted polling marker
+- 🗳️ **Polls & Quizzes** — `PollManager` emulation with `/poll` command (no native polls in Max API)
+- 🔐 **Mintsifry CA bundled** — works with `platform-api2.max.ru` out of the box, no system cert install
 - 📦 **Python 3.9–3.12**
 
 ## Installation
@@ -219,6 +244,70 @@ bot = Bot(rate_limit=RateLimitConfig.strict())   # 5 req/s, burst 10
 bot = Bot(rate_limit=RateLimitConfig.relaxed())  # 30 req/s, burst 50
 ```
 
+## Max API v2 (July 2026 migration)
+
+Max shuts down the old API domains on **July 19, 2026**. aioscam ≥0.2.2 talks to
+`platform-api2.max.ru` by default and bundles the Mintsifry (Russian Trusted) CA
+certificates the new server is signed with — trust is scoped to the bot's HTTPS
+connections only, your system trust store is never touched:
+
+```python
+bot = Bot()                          # just works on platform-api2.max.ru
+bot = Bot(ssl_context=my_context)    # override if you need a custom trust chain
+```
+
+## Chat Registry
+
+Max removed `GET /chats` — a bot can no longer ask the server which chats it is in.
+`ChatRegistry` rebuilds that knowledge bot-side and persists it in SQLite:
+
+```python
+from aioscam import Bot, Dispatcher, ChatRegistry
+
+registry = ChatRegistry()               # .aioscam/bot.db
+dp = Dispatcher(registry=registry)
+
+# backlog policy: what to do with updates accumulated while the bot was down
+#   "skip"     — drop them (registry is still updated from ALL of them, in order)
+#   "process"  — dispatch everything
+#   "collapse" — 50 stale /start presses from one user become one event
+await dp.start_polling(bot, backlog="collapse")
+
+groups = await registry.groups()        # local, zero API calls
+chats  = await registry.chats()
+stats  = await registry.sync(bot)       # reconcile against live API + refresh bot permissions
+```
+
+The long-polling marker is persisted too: a restart resumes exactly where the bot
+stopped, so `bot_added` events from downtime are not lost.
+
+## Polls & Quizzes
+
+Max Bot API has no native polls — `PollManager` emulates them over inline keyboards
+with votes in SQLite and live result bars in the message:
+
+```python
+from aioscam import PollManager
+
+polls = PollManager()                   # same .aioscam/bot.db
+polls.attach(dp, command="poll")        # users get: /poll [priv|anon|pub] Вопрос | вар1 | вар2
+
+# bot-driven poll (creator_id=None → no control buttons, close via code only)
+poll_id = await polls.send_poll(bot, chat_id, "Deploy on Friday?", ["Yes", "No"],
+                                visibility="pub", creator_id=admin_id)
+
+await polls.send_quiz(bot, chat_id, "2+2?", ["3", "4"], correct_option=1,
+                      explanation="Arithmetic.")
+
+results = await polls.results(poll_id)
+await polls.close_poll(bot, poll_id)
+```
+
+Visibility: `pub` shows voter names, `anon` shows aggregate bars, `priv` hides
+everything — the creator reads the breakdown via a private "📊 Results" button.
+Hint strings are localized (bundled ru/en): notifications follow the clicking
+user's client locale, the shared message follows the creator's.
+
 ## API Coverage
 
 | Category | Methods |
@@ -227,7 +316,7 @@ bot = Bot(rate_limit=RateLimitConfig.relaxed())  # 30 req/s, burst 50
 | **Messages** | `send_message`, `edit_message`, `delete_message`, `get_message`, `get_messages`, `pin_message`, `delete_pin_message`, `get_pin_message` |
 | **Media** | `send_photo`, `send_video`, `send_audio`, `send_document`, `send_media`, `download_file`, `download_file_bytes`, `get_upload_url`, `get_video` |
 | **Callbacks** | `send_callback`, `send_action` |
-| **Chats** | `get_chats`, `get_chat_by_id`, `get_chat_by_link`, `edit_chat`, `delete_chat`, `add_chat_members`, `remove_member_chat`, `add_list_admin_chat`, `remove_admin`, `get_chat_members`, `get_chat_member`, `get_list_admin_chat`, `delete_me_from_chat` |
+| **Chats** | `get_chat_by_id`, `get_chat_by_link`, `edit_chat`, `delete_chat`, `add_chat_members`, `remove_member_chat`, `add_list_admin_chat`, `remove_admin`, `get_chat_members`, `get_chat_member`, `get_list_admin_chat`, `delete_me_from_chat`; ~~`get_chats`~~ (removed from Max API June 2026 — use `ChatRegistry`) |
 | **Updates** | `get_updates`, `get_last_marker` |
 | **Webhooks** | `subscribe_webhook`, `unsubscribe_webhook`, `get_subscriptions` |
 
@@ -240,7 +329,9 @@ bot = Bot(rate_limit=RateLimitConfig.relaxed())  # 30 req/s, burst 50
 ```
 aioscam/
 ├── bot/          # Bot client — all API methods
+├── certs/        # Bundled Mintsifry CA (platform-api2.max.ru TLS)
 ├── client/       # HTTP client (aiohttp, rate-limited, file upload/download)
+├── db.py         # Shared SQLite bot database (.aioscam/bot.db)
 ├── dispatcher/   # Dispatcher, Router, EventContext, StateGuard
 ├── enums/        # 15 enum files
 ├── exceptions/   # 12 exception classes
@@ -251,6 +342,8 @@ aioscam/
 ├── limiter/      # RateLimiter, RateLimitConfig
 ├── methods/      # BaseMethod, GetMe, SendMessage, GetUpdates
 ├── middleware/   # BaseMiddleware, MiddlewareManager
+├── polls/        # PollManager — polls/quizzes over inline keyboards
+├── registry/     # ChatRegistry — bot-side chat list, persisted marker
 ├── types/        # Pydantic models — User, Chat, Message, Attachment, etc.
 ├── utils/        # KeyboardBuilder, formatting, deep_linking, media, BotCapabilities
 └── webapp/       # validate_init_data, validate_contact, EventStreamManager, WebAppMiddleware
@@ -269,7 +362,7 @@ AIOSCAM_ENV=prod   # debug | test | prod
 python -m pytest tests/ -v
 ```
 
-**633/633 tests passing (100%)**
+**714/714 tests passing (100%)**
 
 ## Example Bots
 
@@ -291,6 +384,8 @@ python -m pytest tests/ -v
 | `demo_bot.py` | Full-featured demo (FSM, media, i18n, deep links, SQLAlchemy) |
 | `run_bot.py` | Minimal launcher |
 | `webapp_bot.py` | WebApp REST+SSE backend — `examples/webapp/*.html` frontends |
+| `poll_bot.py` | Polls & quizzes — `/poll` command, bot-driven polls, priv/anon/pub |
+| `registry_bot.py` | ChatRegistry — `/chats` from local registry, `/sync`, backlog policies |
 
 ## License
 

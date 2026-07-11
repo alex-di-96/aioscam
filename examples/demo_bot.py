@@ -1802,7 +1802,7 @@ async def main():
     # To opt out of auto-branding:    Bot(auto_brand=False)
     
     try:
-        await dp.start_polling(bot, skip_updates=False)
+        await dp.start_polling(bot, backlog="collapse")
     except KeyboardInterrupt:
         print("\n\n⏹️ Бот остановлен пользователем")
     except Exception as e:
