@@ -67,7 +67,7 @@ Repository = "https://github.com/alex-di-96/aioscam"
 "Bug Tracker" = "https://github.com/alex-di-96/aioscam/issues"
 
 [tool.setuptools.package-data]
-aioscam = ["py.typed", "certs/*.crt"]
+aioscam = ["py.typed", "certs/*.crt", "polls/locales/*.json"]
 
 [tool.setuptools.packages.find]
 include = ["aioscam*"]

@@ -18,6 +18,7 @@ from aioscam.types.update import Update
 from aioscam.fsm.memory import MemoryStorage
 from aioscam.fsm.storage import BaseStorage
 from aioscam.exceptions import DispatcherError
+from aioscam.registry import ChatRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +45,13 @@ class Dispatcher(Router):
         state_guard_commands: Optional[Iterable] = None,
         state_guard_callbacks: Optional[Iterable] = None,
         state_guard_hint_func: Optional[Any] = None,
+        registry: Optional["ChatRegistry"] = None,
     ):
         from aioscam.config import get_config
 
         super().__init__("Dispatcher")
         self.storage = storage or MemoryStorage()
+        self.registry = registry
         self._running = False
         self._polling_offset: Optional[int] = None
         self._lock = asyncio.Lock()
@@ -245,21 +248,81 @@ class Dispatcher(Router):
 
         return await super().process_event(event_type, event, data)
     
+    @staticmethod
+    def _collapse_backlog(updates: List[Update]) -> List[Update]:
+        """
+        Deduplicate a startup backlog: for each (chat_id, user_id, update_type)
+        only the LAST event survives (50 stale /start presses become one).
+        Original relative order of the survivors is preserved.
+        """
+        last_index: Dict[Any, int] = {}
+        for i, update in enumerate(updates):
+            recipient = update.recipient
+            chat_id = getattr(recipient, "chat_id", None) if recipient else None
+            sender = update.sender
+            # User model stores the ID as .id (alias "user_id" in raw API)
+            user_id = getattr(sender, "id", None) if sender else None
+            key = (chat_id, user_id, update.update_type)
+            last_index[key] = i
+        keep = set(last_index.values())
+        return [u for i, u in enumerate(updates) if i in keep]
+
+    async def _drain_backlog(
+        self,
+        bot: Bot,
+        limit: int,
+        max_batches: int = 200,
+    ) -> List[Update]:
+        """
+        Fetch ALL pending updates with timeout=0 until the queue is empty.
+
+        This replaces the old get_last_marker() skip, which only advanced past
+        the first pending update and silently let the rest through.
+        """
+        backlog: List[Update] = []
+        for _ in range(max_batches):
+            data = await bot.get_updates(
+                marker=self._polling_offset, limit=limit, timeout=0,
+            )
+            batch = data.get("updates", [])
+            marker = data.get("marker")
+            if marker is not None:
+                self._polling_offset = marker
+            if not batch:
+                break
+            for raw in batch:
+                try:
+                    if isinstance(raw, str):
+                        raw = json.loads(raw)
+                    backlog.append(Update(**raw))
+                except Exception as e:
+                    logger.error(f"Error parsing backlog update: {e}")
+        return backlog
+
     async def start_polling(
         self,
         bot: Bot,
         skip_updates: bool = True,
         timeout: int = 30,
         limit: int = 100,
+        backlog: Optional[str] = None,
     ) -> None:
         """
         Start polling for updates
-        
+
         Args:
             bot: Bot instance
-            skip_updates: Skip pending updates on start
+            skip_updates: Legacy switch — True maps to backlog="skip",
+                          False to backlog="process". Ignored when
+                          ``backlog`` is passed explicitly.
             timeout: Long polling timeout
             limit: Updates limit per request
+            backlog: What to do with updates accumulated while the bot was
+                     down: "skip" — drop them; "process" — dispatch all;
+                     "collapse" — dispatch only the last event per
+                     (chat, user, type). With a registry attached,
+                     registry-relevant events are applied to the database
+                     in ALL modes before the policy drops anything.
         """
         async with self._lock:
             if self._running:
@@ -306,16 +369,61 @@ class Dispatcher(Router):
         except Exception as e:
             logger.warning(f"Failed to check/delete webhook: {e}")
         
-        # Get initial marker if skip_updates
-        if skip_updates:
+        # ── Backlog phase ────────────────────────────────────────────────
+        policy = backlog or ("skip" if skip_updates else "process")
+        if policy not in ("skip", "process", "collapse"):
+            raise DispatcherError(
+                f"Unknown backlog policy: {policy!r}",
+                hint='use "skip", "process" or "collapse"',
+            )
+
+        if self.registry is not None:
+            await self.registry.start()
+            # Resume from the persisted marker so downtime events are
+            # still in the drained backlog (within Max queue retention)
             try:
-                marker = await bot.get_last_marker()
-                if marker:
-                    self._polling_offset = marker
-                    logger.info(f"Skipped updates, starting from marker: {marker}")
+                saved = await self.registry.get_marker()
+                if saved is not None:
+                    self._polling_offset = saved
+                    logger.info(f"Resuming polling from persisted marker: {saved}")
             except Exception as e:
-                logger.warning(f"Failed to skip updates: {e}")
-        
+                logger.warning(f"Failed to load persisted marker: {e}")
+
+        try:
+            pending = await self._drain_backlog(bot, limit=limit)
+        except Exception as e:
+            logger.warning(f"Backlog drain failed, continuing live: {e}")
+            pending = []
+
+        if pending:
+            # Registry state is updated from the FULL ordered backlog in every
+            # mode — bot_added/bot_removed sequences must never be collapsed
+            if self.registry is not None:
+                for update in pending:
+                    await self.registry.apply_update(update)
+
+            if policy == "skip":
+                logger.info(f"Backlog: {len(pending)} pending updates dropped (skip)")
+                pending = []
+            elif policy == "collapse":
+                collapsed = self._collapse_backlog(pending)
+                logger.info(
+                    f"Backlog: {len(pending)} pending updates collapsed to {len(collapsed)}"
+                )
+                pending = collapsed
+            else:
+                logger.info(f"Backlog: processing all {len(pending)} pending updates")
+
+            for update in pending:
+                asyncio.create_task(self._process_update(bot, update))
+
+        if self.registry is not None and self._polling_offset is not None:
+            try:
+                await self.registry.set_marker(self._polling_offset)
+            except Exception as e:
+                logger.warning(f"Failed to persist marker: {e}")
+
+
         retry_count = 0
         max_retry_delay = 30
         
@@ -347,6 +455,8 @@ class Dispatcher(Router):
                                 logger.info(f"Raw update data: {update_data}")
 
                                 update = Update(**update_data)
+                                if self.registry is not None:
+                                    await self.registry.apply_update(update)
                                 # Process updates in parallel to avoid blocking the loop
                                 asyncio.create_task(self._process_update(bot, update))
                             except Exception as e:
@@ -358,6 +468,11 @@ class Dispatcher(Router):
                     # Update marker from API response (not from update body!)
                     if api_marker is not None:
                         self._polling_offset = api_marker
+                        if self.registry is not None and updates_response:
+                            try:
+                                await self.registry.set_marker(api_marker)
+                            except Exception as e:
+                                logger.warning(f"Failed to persist marker: {e}")
                     
                 except Exception as e:
                     retry_count += 1
@@ -374,6 +489,8 @@ class Dispatcher(Router):
             async with self._lock:
                 self._running = False
             await self.storage.close()
+            if self.registry is not None:
+                await self.registry.close()
     
     async def stop_polling(self) -> None:
         """Stop polling"""
@@ -470,6 +587,9 @@ class Dispatcher(Router):
             except TypeError:
                 pass
 
+        if self.registry is not None:
+            await self.registry.start()
+
         self._webhook_secret = secret_token
         self._webhook_stop_event = asyncio.Event()
         app = web.Application()
@@ -488,6 +608,8 @@ class Dispatcher(Router):
             try:
                 data = await request.json()
                 update = Update(**data)
+                if self.registry is not None:
+                    asyncio.create_task(self.registry.apply_update(update))
                 # Process update in parallel to avoid blocking the webhook response
                 asyncio.create_task(self._process_update(bot, update))
                 return web.json_response({"ok": True})

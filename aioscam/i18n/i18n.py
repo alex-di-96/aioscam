@@ -176,6 +176,34 @@ class I18n:
 
         return self.default_locale
 
+    def translate(self, locale: Optional[str], key: str, **kwargs: Any) -> str:
+        """
+        Get translated string for an explicit locale (no event needed).
+
+        Useful when the locale is stored rather than derived from the current
+        event — e.g. rendering a shared message in its creator's language.
+
+        Args:
+            locale: Locale code ("ru", "en", ...); None → default_locale
+            key: Translation key
+            **kwargs: Format variables
+
+        Returns:
+            Translated and formatted string (key itself if missing everywhere)
+        """
+        translations = self._translations.get(locale or self.default_locale, {})
+        text = translations.get(key)
+        if text is None:
+            text = self._translations.get(self.default_locale, {}).get(key, key)
+
+        if kwargs:
+            try:
+                text = text.format(**kwargs)
+            except (KeyError, ValueError):
+                pass
+
+        return text
+
     def gettext(self, event: Any, key: str, **kwargs: Any) -> str:
         """
         Get translated string for the user's locale
@@ -188,19 +216,7 @@ class I18n:
         Returns:
             Translated and formatted string
         """
-        locale = self.get_locale(event)
-        translations = self._translations.get(locale, {})
-        text = translations.get(key)
-        if text is None:
-            text = self._translations.get(self.default_locale, {}).get(key, key)
-
-        if kwargs:
-            try:
-                text = text.format(**kwargs)
-            except (KeyError, ValueError):
-                pass
-
-        return text
+        return self.translate(self.get_locale(event), key, **kwargs)
 
     def ngettext(self, event: Any, singular: str, plural: str, count: int, **kwargs: Any) -> str:
         """

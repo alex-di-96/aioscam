@@ -14,6 +14,8 @@ from aioscam.enums.upload import UploadType
 from aioscam.config import Config, get_config, EnvMode
 from aioscam.methods import BaseMethod, SendMessage, GetMe, GetUpdates, SendCallback
 from aioscam.i18n import I18n
+from aioscam.registry import ChatRegistry
+from aioscam.polls import PollManager
 
 __all__ = [
     "Bot",
@@ -33,6 +35,8 @@ __all__ = [
     "GetMe",
     "GetUpdates",
     "I18n",
+    "ChatRegistry",
+    "PollManager",
     "InputMedia",
     "InputMediaBuffer",
     "UploadType",
