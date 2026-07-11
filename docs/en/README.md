@@ -1,6 +1,6 @@
 # AioScam — Documentation (EN)
 
-**v0.2.1** | [Русский](../ru/README.md)
+**v0.2.2** | [Русский](../ru/README.md)
 
 ## Table of Contents
 
@@ -115,7 +115,7 @@ await bot.send_action(chat_id=123, action=SenderAction.TYPING_ON)
 ### Chats & Users
 ```python
 me = await bot.get_me()
-chats = await bot.get_chats()
+chat = await bot.get_chat_by_id(id=123)   # get_chats() is deprecated — use ChatRegistry
 members = await bot.get_chat_members(chat_id=123)
 await bot.add_chat_members(chat_id=123, user_ids=[456])
 await bot.remove_member_chat(chat_id=123, user_id=456)

@@ -4,9 +4,9 @@ Async Python framework for building Max messenger bots, inspired by aiogram arch
 
 ## Version
 
-**v0.2.1** — Latest (2026-06-21)
+**v0.2.2** — Latest (2026-07-11)
 
-### What's new in v0.2.2 (unreleased)
+### What's new in v0.2.2
 
 > ⚠️ **Max API v2 migration** — old API domains shut down on **July 19, 2026**.
 > Upgrade to this version to keep your bots alive.

@@ -1,6 +1,6 @@
 # AioScam Roadmap
 
-## v0.2.2 — Unreleased
+## v0.2.2 — Current (2026-07-11)
 
 ### Миграция Max API v2 (дедлайн Max: 19 июля 2026)
 
@@ -42,7 +42,7 @@
 
 **Тесты: 714/714** (было 633 в v0.2.1).
 
-## v0.2.1 — Current (2026-06-21)
+## v0.2.1 — (2026-06-21)
 
 ### `HomePage` — generic landing page for WebApp servers (`aioscam/webapp/homepage.py`)
 
